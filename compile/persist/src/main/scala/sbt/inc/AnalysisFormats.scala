@@ -80,8 +80,8 @@ object AnalysisFormats {
     )
   implicit val singleOutputFormat: Format[SingleOutput] =
     wrap[SingleOutput, File](
-      (_.outputDirectory),
-      { out => new SingleOutput { def outputDirectory = out } }
+      (_.outputLocation),
+      { out => new SingleOutput { def outputLocation = out } }
     )(fileFormat)
   implicit val outputFormat: Format[APIOutput] = asUnion(singleOutputFormat, multipleOutputFormat)
 

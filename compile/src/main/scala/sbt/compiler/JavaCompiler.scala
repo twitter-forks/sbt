@@ -10,31 +10,31 @@ abstract class JavacContract(val name: String, val clazz: String) {
   def exec(args: Array[String], writer: PrintWriter): Int
 }
 trait JavaCompiler extends xsbti.compile.JavaCompiler {
-  def apply(sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String])(implicit log: Logger)
+  def apply(sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String])(implicit log: Logger)
 
   def compile(sources: Array[File], classpath: Array[File], output: xsbti.compile.Output, options: Array[String], log: xsbti.Logger): Unit = {
-    val outputDirectory = output match {
-      case single: xsbti.compile.SingleOutput => single.outputDirectory
+    val outputLocation = output match {
+      case single: xsbti.compile.SingleOutput => single.outputLocation
       case _                                  => throw new RuntimeException("Javac doesn't support multiple output directories")
     }
-    apply(sources, classpath, outputDirectory, options)(log)
+    apply(sources, classpath, outputLocation, options)(log)
   }
 
   def onArgs(f: Seq[String] => Unit): JavaCompiler
 }
 trait Javadoc {
-  def doc(sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String], maximumErrors: Int, log: Logger)
+  def doc(sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String], maximumErrors: Int, log: Logger)
 
   def onArgs(f: Seq[String] => Unit): Javadoc
 }
 trait JavaTool extends Javadoc with JavaCompiler {
-  def apply(sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String])(implicit log: Logger) =
-    compile(JavaCompiler.javac, sources, classpath, outputDirectory, options)(log)
+  def apply(sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String])(implicit log: Logger) =
+    compile(JavaCompiler.javac, sources, classpath, outputLocation, options)(log)
 
-  def doc(sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String], maximumErrors: Int, log: Logger) =
-    compile(JavaCompiler.javadoc, sources, classpath, outputDirectory, options)(log)
+  def doc(sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String], maximumErrors: Int, log: Logger) =
+    compile(JavaCompiler.javadoc, sources, classpath, outputLocation, options)(log)
 
-  def compile(contract: JavacContract, sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String])(implicit log: Logger): Unit
+  def compile(contract: JavacContract, sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String])(implicit log: Logger): Unit
 
   def onArgs(f: Seq[String] => Unit): JavaTool
 }
@@ -58,14 +58,14 @@ object JavaCompiler {
 
   private[this] class JavaTool0(f: Fork, cp: ClasspathOptions, scalaInstance: ScalaInstance, onArgsF: Seq[String] => Unit) extends JavaTool {
     def onArgs(g: Seq[String] => Unit): JavaTool = new JavaTool0(f, cp, scalaInstance, g)
-    def commandArguments(sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String], log: Logger): Seq[String] =
+    def commandArguments(sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String], log: Logger): Seq[String] =
       {
         val augmentedClasspath = if (cp.autoBoot) classpath ++ Seq(scalaInstance.libraryJar) else classpath
         val javaCp = ClasspathOptions.javac(cp.compiler)
-        (new CompilerArguments(scalaInstance, javaCp))(sources, augmentedClasspath, Some(outputDirectory), options)
+        (new CompilerArguments(scalaInstance, javaCp))(sources, augmentedClasspath, Some(outputLocation), options)
       }
-    def compile(contract: JavacContract, sources: Seq[File], classpath: Seq[File], outputDirectory: File, options: Seq[String])(implicit log: Logger) {
-      val arguments = commandArguments(sources, classpath, outputDirectory, options, log)
+    def compile(contract: JavacContract, sources: Seq[File], classpath: Seq[File], outputLocation: File, options: Seq[String])(implicit log: Logger) {
+      val arguments = commandArguments(sources, classpath, outputLocation, options, log)
       onArgsF(arguments)
       val code: Int = f(contract, arguments, log)
       log.debug(contract.name + " returned exit code: " + code)

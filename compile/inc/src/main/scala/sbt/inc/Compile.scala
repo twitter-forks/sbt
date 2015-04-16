@@ -54,7 +54,7 @@ object IncrementalCompile {
 private final class AnalysisCallback(internalMap: File => Option[File], externalAPI: (File, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) extends xsbti.AnalysisCallback {
   val compilation = {
     val outputSettings = output match {
-      case single: SingleOutput => Array(new OutputSetting("/", single.outputDirectory.getAbsolutePath))
+      case single: SingleOutput => Array(new OutputSetting("/", single.outputLocation.getAbsolutePath))
       case multi: MultipleOutput =>
         multi.outputGroups.map(out => new OutputSetting(out.sourceDirectory.getAbsolutePath, out.outputDirectory.getAbsolutePath)).toArray
     }

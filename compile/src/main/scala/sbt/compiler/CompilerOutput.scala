@@ -10,7 +10,7 @@ import java.io.File
 
 object CompileOutput {
   def apply(dir: File): Output = new SingleOutput {
-    def outputDirectory = dir
+    def outputLocation = dir
   }
 
   def apply(groups: (File, File)*): Output = new MultipleOutput {

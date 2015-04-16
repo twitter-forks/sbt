@@ -104,7 +104,7 @@ class AggressiveCompile(cacheFile: File) {
               if (f2 eq null) false else if (f1 == f2) true else ancestor(f1, f2.getParentFile)
 
             val chunks: Map[Option[File], Seq[File]] = output match {
-              case single: SingleOutput => Map(Some(single.outputDirectory) -> javaSrcs)
+              case single: SingleOutput => Map(Some(single.outputLocation) -> javaSrcs)
               case multi: MultipleOutput =>
                 javaSrcs groupBy { src =>
                   multi.outputGroups find { out => ancestor(out.sourceDirectory, src) } map (_.outputDirectory)
@@ -113,8 +113,8 @@ class AggressiveCompile(cacheFile: File) {
             chunks.get(None) foreach { srcs =>
               log.error("No output directory mapped for: " + srcs.map(_.getAbsolutePath).mkString(","))
             }
-            val memo = for ((Some(outputDirectory), srcs) <- chunks) yield {
-              val classesFinder = PathFinder(outputDirectory) ** "*.class"
+            val memo = for ((Some(outputLocation), srcs) <- chunks) yield {
+              val classesFinder = PathFinder(outputLocation) ** "*.class"
               (classesFinder, classesFinder.get, srcs)
             }
 
@@ -153,7 +153,7 @@ class AggressiveCompile(cacheFile: File) {
       IncrementalCompile(sourcesSet, entry, compile0, analysis, getAnalysis, output, log, incOptions)
     }
   private[this] def outputDirectories(output: Output): Seq[File] = output match {
-    case single: SingleOutput => List(single.outputDirectory)
+    case single: SingleOutput => List(single.outputLocation)
     case mult: MultipleOutput => mult.outputGroups map (_.outputDirectory)
   }
   private[this] def timed[T](label: String, log: Logger)(t: => T): T =

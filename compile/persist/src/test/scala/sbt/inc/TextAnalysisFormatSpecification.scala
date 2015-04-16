@@ -10,7 +10,7 @@ import Prop._
 object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
 
   val nameHashing = true
-  val dummyOutput = new xsbti.compile.SingleOutput { def outputDirectory: java.io.File = new java.io.File("dummy") }
+  val dummyOutput = new xsbti.compile.SingleOutput { def outputLocation: java.io.File = new java.io.File("dummy") }
   val commonSetup = new CompileSetup(dummyOutput, new CompileOptions(Nil, Nil), "2.10.4", xsbti.compile.CompileOrder.Mixed, nameHashing)
   val commonHeader = """format version: 5
                     |output mode:

@@ -37,7 +37,7 @@ sealed abstract class CallbackGlobal(settings: Settings, reporter: reporters.Rep
   def findClass(name: String): Option[(AbstractFile, Boolean)]
   lazy val outputDirs: Iterable[File] = {
     output match {
-      case single: SingleOutput  => List(single.outputDirectory)
+      case single: SingleOutput  => List(single.outputLocation)
       case multi: MultipleOutput => multi.outputGroups.toStream map (_.outputDirectory)
     }
   }
@@ -71,7 +71,7 @@ private final class CachedCompiler0(args: Array[String], output: Output, initial
       for (out <- multi.outputGroups)
         settings.outputDirs.add(out.sourceDirectory.getAbsolutePath, out.outputDirectory.getAbsolutePath)
     case single: SingleOutput =>
-      settings.outputDirs.setSingleOutput(single.outputDirectory.getAbsolutePath)
+      settings.outputDirs.setSingleOutput(single.outputLocation.getAbsolutePath)
   }
 
   val command = Command(args.toList, settings)

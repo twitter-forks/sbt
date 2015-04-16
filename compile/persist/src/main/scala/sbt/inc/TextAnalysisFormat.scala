@@ -274,7 +274,7 @@ object TextAnalysisFormat {
 
     def write(out: Writer, setup: CompileSetup) {
       val (mode, outputAsMap) = setup.output match {
-        case s: SingleOutput   => (singleOutputMode, Map(singleOutputKey -> s.outputDirectory))
+        case s: SingleOutput   => (singleOutputMode, Map(singleOutputKey -> s.outputLocation))
         case m: MultipleOutput => (multipleOutputMode, m.outputGroups.map(x => x.sourceDirectory -> x.outputDirectory).toMap)
       }
 
@@ -301,7 +301,7 @@ object TextAnalysisFormat {
       val output = outputDirMode match {
         case Some(s) => s match {
           case `singleOutputMode` => new SingleOutput {
-            val outputDirectory = outputAsMap(singleOutputKey)
+            val outputLocation = outputAsMap(singleOutputKey)
           }
           case `multipleOutputMode` => new MultipleOutput {
             val outputGroups: Array[MultipleOutput.OutputGroup] = outputAsMap.toArray.map {

@@ -20,7 +20,7 @@ SourceAPI
 
 OutputSetting
 	sourceDirectory: String
-	outputDirectory: String
+	outputLocation: String
 
 Compilation
 	startTime: Long

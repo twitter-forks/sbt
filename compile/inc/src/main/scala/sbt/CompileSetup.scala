@@ -41,7 +41,7 @@ object CompileSetup {
             case (a, b) =>
               equivFile.equiv(a.sourceDirectory, b.sourceDirectory) && equivFile.equiv(a.outputDirectory, b.outputDirectory)
           })
-      case (s1: SingleOutput, s2: SingleOutput) => equivFile.equiv(s1.outputDirectory, s2.outputDirectory)
+      case (s1: SingleOutput, s2: SingleOutput) => equivFile.equiv(s1.outputLocation, s2.outputLocation)
       case _                                    => false
     }
   }
