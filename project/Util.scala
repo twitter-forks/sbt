@@ -41,7 +41,7 @@ object Util {
     name := nameString,
     resolvers += Resolver.typesafeIvyRepo("releases")
   )
-  def minProject(path: File, nameString: String) = Project(normalize(nameString), path) settings (commonSettings(nameString) ++ publishPomSettings ++ Release.javaVersionCheckSettings: _*)
+  def minProject(path: File, nameString: String) = Project(normalize(nameString), path) settings (commonSettings(nameString) ++ publishPomSettings: _*)
   def baseProject(path: File, nameString: String) = minProject(path, nameString) settings (base: _*)
   def testedBaseProject(path: File, nameString: String) = baseProject(path, nameString) settings (testDependencies)
 
