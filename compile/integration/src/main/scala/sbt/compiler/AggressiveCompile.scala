@@ -20,6 +20,38 @@ import xsbti.api.Source
 import xsbti.compile.{ CompileOrder, DependencyChanges, GlobalsCache, Output, SingleOutput, MultipleOutput, CompileProgress }
 import CompileOrder.{ JavaThenScala, Mixed, ScalaThenJava }
 
+/**
+ * Trait to differentiate Jar outputs from Directory outputs.
+ */
+sealed trait OutputLocation {
+  def file: File
+  def prepare(): Unit
+}
+object OutputLocation {
+  /**
+   * @return Creates an OutputLocation for the given file, which will represent either
+   * a jar or directory.
+   */
+  def apply(file: File) =
+    if (endsWithJar(file)) {
+      Jar(file)
+    } else {
+      Directory(file)
+    }
+
+  case class Jar(file: File) extends OutputLocation {
+    assert(endsWithJar(file), s"${file} is not a jarfile.")
+    def prepare() = IO.createDirectory(file.getParentFile)
+  }
+  case class Directory(file: File) extends OutputLocation {
+    assert(!endsWithJar(file), s"${file} is (probably) not a directory.")
+    def prepare() = IO.createDirectory(file)
+  }
+
+  private def endsWithJar(file: File): Boolean =
+    file.getName.toLowerCase.endsWith(".jar")
+}
+
 final class CompileConfiguration(val sources: Seq[File], val classpath: Seq[File],
   val previousAnalysis: Analysis, val previousSetup: Option[CompileSetup], val currentSetup: CompileSetup, val progress: Option[CompileProgress], val getAnalysis: File => Option[Analysis], val definesClass: DefinesClass,
   val reporter: Reporter, val compiler: AnalyzingCompiler, val javac: xsbti.compile.JavaCompiler, val cache: GlobalsCache, val incOptions: IncOptions)
@@ -84,11 +116,11 @@ class AggressiveCompile(cacheFile: File) {
       val entry = Locate.entry(searchClasspath, definesClass)
 
       val compile0 = (include: Set[File], changes: DependencyChanges, callback: AnalysisCallback) => {
-        val outputDirs = outputDirectories(output)
-        outputDirs foreach (IO.createDirectory)
+        val outputLocs = outputLocations(output)
+        outputLocs foreach (_.prepare)
         val incSrc = sources.filter(include)
         val (javaSrcs, scalaSrcs) = incSrc partition javaOnly
-        logInputs(log, javaSrcs.size, scalaSrcs.size, outputDirs)
+        logInputs(log, javaSrcs.size, scalaSrcs.size, outputLocs)
         def compileScala() =
           if (!scalaSrcs.isEmpty) {
             val sources = if (order == Mixed) incSrc else scalaSrcs
@@ -152,9 +184,14 @@ class AggressiveCompile(cacheFile: File) {
       }
       IncrementalCompile(sourcesSet, entry, compile0, analysis, getAnalysis, output, log, incOptions)
     }
-  private[this] def outputDirectories(output: Output): Seq[File] = output match {
-    case single: SingleOutput => List(single.outputLocation)
-    case mult: MultipleOutput => mult.outputGroups map (_.outputDirectory)
+  private[this] def outputLocations(output: Output): Seq[OutputLocation] = output match {
+    case single: SingleOutput =>
+      List(OutputLocation(single.outputLocation))
+    case mult: MultipleOutput =>
+      mult.outputGroups.map { og =>
+        // MultipleOutput only supports directory outputs.
+        OutputLocation.Directory(og.outputDirectory)
+      }
   }
   private[this] def timed[T](label: String, log: Logger)(t: => T): T =
     {
@@ -164,12 +201,14 @@ class AggressiveCompile(cacheFile: File) {
       log.debug(label + " took " + (elapsed / 1e9) + " s")
       result
     }
-  private[this] def logInputs(log: Logger, javaCount: Int, scalaCount: Int, outputDirs: Seq[File]) {
+  private[this] def logInputs(log: Logger, javaCount: Int, scalaCount: Int, outputLocations: Seq[OutputLocation]) {
     val scalaMsg = Analysis.counted("Scala source", "", "s", scalaCount)
     val javaMsg = Analysis.counted("Java source", "", "s", javaCount)
     val combined = scalaMsg ++ javaMsg
-    if (!combined.isEmpty)
-      log.info(combined.mkString("Compiling ", " and ", " to " + outputDirs.map(_.getAbsolutePath).mkString(",") + "..."))
+    if (!combined.isEmpty) {
+      val locationsString = outputLocations.map(_.file.getAbsolutePath).mkString(",")
+      log.info(combined.mkString("Compiling ", " and ", " to " + locationsString + "..."))
+    }
   }
   private def extract(previous: Option[(Analysis, CompileSetup)], incOptions: IncOptions): (Analysis, Option[CompileSetup]) =
     previous match {
