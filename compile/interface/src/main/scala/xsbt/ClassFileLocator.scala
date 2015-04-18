@@ -17,7 +17,7 @@ import java.util.zip.{ ZipEntry, ZipException, ZipFile }
  * class files corresponding to Symbols. Should be reinstantiated whenever it
  * is expected that outputs have changed.
  */
-case class ClassFileLocator[G <: CallbackGlobal](global: G) {
+case class ClassFileLocator[G <: CallbackGlobal](global: G) extends Compat {
   import global._
 
   /** @return An index of output jar Files to the filenames they contain. */
