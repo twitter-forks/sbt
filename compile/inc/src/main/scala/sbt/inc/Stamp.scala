@@ -5,12 +5,13 @@ package sbt
 package inc
 
 import java.io.{ File, IOException }
+import java.net.URL
 import Stamp.getStamp
 import scala.util.matching.Regex
 
 trait ReadStamps {
   /** The Stamp for the given product at the time represented by this Stamps instance.*/
-  def product(prod: File): Stamp
+  def product(prod: URL): Stamp
   /** The Stamp for the given source file at the time represented by this Stamps instance.*/
   def internalSource(src: File): Stamp
   /** The Stamp for the given binary dependency at the time represented by this Stamps instance.*/
@@ -25,14 +26,14 @@ trait Stamps extends ReadStamps {
 
   def sources: Map[File, Stamp]
   def binaries: Map[File, Stamp]
-  def products: Map[File, Stamp]
+  def products: Map[URL, Stamp]
   def classNames: Map[File, String]
 
   def className(bin: File): Option[String]
 
   def markInternalSource(src: File, s: Stamp): Stamps
   def markBinary(bin: File, className: String, s: Stamp): Stamps
-  def markProduct(prod: File, s: Stamp): Stamps
+  def markProduct(prod: URL, s: Stamp): Stamps
 
   def filter(prod: File => Boolean, removeSources: Iterable[File], bin: File => Boolean): Stamps
 
@@ -95,7 +96,22 @@ object Stamp {
   }
 
   val hash = (f: File) => tryStamp(new Hash(Hash(f)))
-  val lastModified = (f: File) => tryStamp(new LastModified(f.lastModified))
+  val lastModifiedFile = (f: File) => tryStamp(new LastModified(f.lastModified))
+  val lastModifiedURL = (u: URL) => tryStamp {
+    // FIXME: XXX: these should be cached per-jar on a lookup-round basis
+    val lastModified =
+      u.getProtocol match {
+        case "jar" =>
+          // does not create an input stream
+          u.openConnection.getLastModified
+        case "file" =>
+          // ugh. custom class rather than URL?
+          new File(u.getFile.substring("file:".length)).lastModified
+        case prot =>
+          throw new AssertionError("Protocol ${prot} not supported for last modified time lookups.")
+      }
+    new LastModified(lastModified)
+  }
   val exists = (f: File) => tryStamp(if (f.exists) present else notPresent)
 
   def tryStamp(g: => Stamp): Stamp = try { g } catch { case i: IOException => notPresent }
@@ -103,7 +119,7 @@ object Stamp {
   val notPresent = new Exists(false)
   val present = new Exists(true)
 
-  def getStamp(map: Map[File, Stamp], src: File): Stamp = map.getOrElse(src, notPresent)
+  def getStamp[T](map: Map[T, Stamp], src: T): Stamp = map.getOrElse(src, notPresent)
 }
 
 object Stamps {
@@ -113,23 +129,20 @@ object Stamps {
    * stamp is calculated separately on demand.
    * The stamp for a product is always recalculated.
    */
-  def initial(prodStamp: File => Stamp, srcStamp: File => Stamp, binStamp: File => Stamp): ReadStamps = new InitialStamps(prodStamp, srcStamp, binStamp)
+  def initial(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: File => Stamp): ReadStamps = new InitialStamps(prodStamp, srcStamp, binStamp)
 
-  def empty: Stamps =
-    {
-      val eSt = Map.empty[File, Stamp]
-      apply(eSt, eSt, eSt, Map.empty[File, String])
-    }
-  def apply(products: Map[File, Stamp], sources: Map[File, Stamp], binaries: Map[File, Stamp], binaryClassNames: Map[File, String]): Stamps =
+  val empty: Stamps = apply(Map.empty, Map.empty, Map.empty, Map.empty)
+
+  def apply(products: Map[URL, Stamp], sources: Map[File, Stamp], binaries: Map[File, Stamp], binaryClassNames: Map[File, String]): Stamps =
     new MStamps(products, sources, binaries, binaryClassNames)
 
   def merge(stamps: Traversable[Stamps]): Stamps = (Stamps.empty /: stamps)(_ ++ _)
 }
 
-private class MStamps(val products: Map[File, Stamp], val sources: Map[File, Stamp], val binaries: Map[File, Stamp], val classNames: Map[File, String]) extends Stamps {
+private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stamp], val binaries: Map[File, Stamp], val classNames: Map[File, String]) extends Stamps {
   def allInternalSources: collection.Set[File] = sources.keySet
   def allBinaries: collection.Set[File] = binaries.keySet
-  def allProducts: collection.Set[File] = products.keySet
+  def allProducts: collection.Set[URL] = products.keySet
 
   def ++(o: Stamps): Stamps =
     new MStamps(products ++ o.products, sources ++ o.sources, binaries ++ o.binaries, classNames ++ o.classNames)
@@ -140,17 +153,17 @@ private class MStamps(val products: Map[File, Stamp], val sources: Map[File, Sta
   def markBinary(bin: File, className: String, s: Stamp): Stamps =
     new MStamps(products, sources, binaries.updated(bin, s), classNames.updated(bin, className))
 
-  def markProduct(prod: File, s: Stamp): Stamps =
+  def markProduct(prod: URL, s: Stamp): Stamps =
     new MStamps(products.updated(prod, s), sources, binaries, classNames)
 
-  def filter(prod: File => Boolean, removeSources: Iterable[File], bin: File => Boolean): Stamps =
+  def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: File => Boolean): Stamps =
     new MStamps(products.filterKeys(prod), sources -- removeSources, binaries.filterKeys(bin), classNames.filterKeys(bin))
 
-  def groupBy[K](prod: Map[K, File => Boolean], f: File => K, bin: Map[K, File => Boolean]): Map[K, Stamps] =
+  def groupBy[K](prod: Map[K, URL => Boolean], f: File => K, bin: Map[K, File => Boolean]): Map[K, Stamps] =
     {
       val sourcesMap: Map[K, Map[File, Stamp]] = sources.groupBy(x => f(x._1))
 
-      val constFalse = (f: File) => false
+      def constFalse[F](f: F) = false
       def kStamps(k: K): Stamps = new MStamps(
         products.filterKeys(prod.getOrElse(k, constFalse)),
         sourcesMap.getOrElse(k, Map.empty[File, Stamp]),
@@ -161,7 +174,7 @@ private class MStamps(val products: Map[File, Stamp], val sources: Map[File, Sta
       (for (k <- prod.keySet ++ sourcesMap.keySet ++ bin.keySet) yield (k, kStamps(k))).toMap
     }
 
-  def product(prod: File) = getStamp(products, prod)
+  def product(prod: URL) = getStamp(products, prod)
   def internalSource(src: File) = getStamp(sources, src)
   def binary(bin: File) = getStamp(binaries, bin)
   def className(bin: File) = classNames get bin
@@ -177,13 +190,13 @@ private class MStamps(val products: Map[File, Stamp], val sources: Map[File, Sta
     "Stamps for: %d products, %d sources, %d binaries, %d classNames".format(products.size, sources.size, binaries.size, classNames.size)
 }
 
-private class InitialStamps(prodStamp: File => Stamp, srcStamp: File => Stamp, binStamp: File => Stamp) extends ReadStamps {
+private class InitialStamps(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: File => Stamp) extends ReadStamps {
   import collection.mutable.{ HashMap, Map }
   // cached stamps for files that do not change during compilation
   private val sources: Map[File, Stamp] = new HashMap
   private val binaries: Map[File, Stamp] = new HashMap
 
-  def product(prod: File): Stamp = prodStamp(prod)
+  def product(prod: URL): Stamp = prodStamp(prod)
   def internalSource(src: File): Stamp = synchronized { sources.getOrElseUpdate(src, srcStamp(src)) }
   def binary(bin: File): Stamp = synchronized { binaries.getOrElseUpdate(bin, binStamp(bin)) }
 }

@@ -38,6 +38,6 @@ private[this] final class FileValueCache0[T](getStamp: File => Stamp, make: File
   }
 }
 object FileValueCache {
-  def apply[T](f: File => T): FileValueCache[T] = make(Stamp.lastModified)(f)
+  def apply[T](f: File => T): FileValueCache[T] = make(Stamp.lastModifiedFile)(f)
   def make[T](stamp: File => Stamp)(f: File => T): FileValueCache[T] = new FileValueCache0[T](stamp, f)
 }

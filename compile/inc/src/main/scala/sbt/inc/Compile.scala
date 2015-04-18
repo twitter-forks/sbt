@@ -20,7 +20,7 @@ object IncrementalCompile {
     output: Output, log: Logger,
     options: IncOptions): (Boolean, Analysis) =
     {
-      val current = Stamps.initial(Stamp.lastModified, Stamp.hash, Stamp.lastModified)
+      val current = Stamps.initial(Stamp.lastModifiedURL, Stamp.hash, Stamp.lastModifiedFile)
       val internalMap = (f: File) => previous.relations.produced(f).headOption
       val externalAPI = getExternalAPI(entry, forEntry)
       try {
@@ -115,7 +115,8 @@ private final class AnalysisCallback(internalMap: File => Option[File], external
         // dependency is a product of a source not included in this compilation
         sourceDependency(dependsOn, source, inherited)
       case None =>
-        classToSource.get(classFile) match {
+        // TODO: update!
+        classToSource.get(classFile.toURL) match {
           case Some(dependsOn) =>
             // dependency is a product of a source in this compilation step,
             //  but not in the same compiler run (as in javac v. scalac)
