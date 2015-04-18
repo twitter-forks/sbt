@@ -72,10 +72,11 @@ case class ClassFileLocator[G <: CallbackGlobal](global: G) extends Compat[G] {
     getOutputClassURLForFilename(classFileName(sym, separatorRequired))
 
   def getOutputClassURLForFilename(filename: String): Option[URL] =
-    outputJarContents.collectFirst {
+    outputJarContents.collect {
       // scan jars first since they're indexed
-      case (jarURI, classFiles) if classFiles(filename) =>
-        new URL(jarURI + "/!/" + filename)
+      case (jarURI, classFiles) if classFiles(filename) => jarURI
+    }.headOption.map { jarURI =>
+      new URL(jarURI + "/!/" + filename)
     }.orElse {
       // scan directories
       outputDirectories.map(new File(_, filename)).find(_.exists()).map(_.toURL)
