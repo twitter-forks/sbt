@@ -6,34 +6,36 @@ package xsbt
 import scala.tools.nsc.{ io, plugins, symtab, Global, Phase }
 import io.{ AbstractFile, PlainFile, ZipArchive }
 import plugins.{ Plugin, PluginComponent }
-import scala.collection.mutable.{ HashMap, HashSet, Map, Set }
 
 import java.io.File
-import java.util.zip.ZipFile
-import xsbti.AnalysisCallback
+import xsbti.{ AnalysisCallback, DirectoryOutputLocation, JarOutputLocation, OutputLocation }
 
 object Analyzer {
   def name = "xsbt-analyzer"
 }
-final class Analyzer(val global: CallbackGlobal) extends LocateClassFile {
+final class Analyzer(val global: CallbackGlobal) {
   import global._
 
   def newPhase(prev: Phase): Phase = new AnalyzerPhase(prev)
   private class AnalyzerPhase(prev: Phase) extends Phase(prev) {
     override def description = "Finds concrete instances of provided superclasses, and application entry points."
+
     def name = Analyzer.name
     def run {
+      lazy val locator = ClassFileLocator(global)
+
+      // build list of generated classes
       for (unit <- currentRun.units if !unit.isJava) {
         val sourceFile = unit.source.file.file
-        // build list of generated classes
         for (iclass <- unit.icode) {
           val sym = iclass.symbol
           def addGenerated(separatorRequired: Boolean) {
-            for (classFile <- outputDirs map (fileForClass(_, sym, separatorRequired)) find (_.exists))
-              callback.generatedClass(sourceFile, classFile, className(sym, '.', separatorRequired))
+            val classFile = locator.getOutputClass(sym, separatorRequired)
+            val className = locator.className(sym, '.', separatorRequired)
+            callback.generatedClass(sourceFile, classFile, className)
           }
           if (sym.isModuleClass && !sym.isImplClass) {
-            if (isTopLevelModule(sym) && sym.companionClass == NoSymbol)
+            if (locator.isTopLevelModule(sym) && sym.companionClass == NoSymbol)
               addGenerated(false)
             addGenerated(true)
           } else
@@ -43,4 +45,3 @@ final class Analyzer(val global: CallbackGlobal) extends LocateClassFile {
     }
   }
 }
-

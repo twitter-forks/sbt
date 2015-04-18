@@ -15,7 +15,7 @@ import inc.IncOptions
 import CompileSetup._
 import sbinary.DefaultProtocol.{ immutableMapFormat, immutableSetFormat, StringFormat }
 
-import xsbti.{ Reporter, AnalysisCallback }
+import xsbti.{ AnalysisCallback, DirectoryOutputLocation, OutputLocation, Reporter }
 import xsbti.api.Source
 import xsbti.compile.{ CompileOrder, DependencyChanges, GlobalsCache, Output, SingleOutput, MultipleOutput, CompileProgress }
 import CompileOrder.{ JavaThenScala, Mixed, ScalaThenJava }
@@ -154,11 +154,11 @@ class AggressiveCompile(cacheFile: File) {
     }
   private[this] def outputLocations(output: Output): Seq[OutputLocation] = output match {
     case single: SingleOutput =>
-      List(OutputLocation(single.outputLocation))
+      List(OutputLocation.create(single.outputLocation))
     case mult: MultipleOutput =>
       mult.outputGroups.map { og =>
         // MultipleOutput only supports directory outputs.
-        OutputLocation.Directory(og.outputDirectory)
+        new DirectoryOutputLocation(og.outputDirectory)
       }
   }
   private[this] def timed[T](label: String, log: Logger)(t: => T): T =

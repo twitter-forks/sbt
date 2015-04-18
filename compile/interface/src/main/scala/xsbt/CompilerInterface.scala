@@ -3,7 +3,7 @@
  */
 package xsbt
 
-import xsbti.{ AnalysisCallback, Logger, Problem, Reporter, Severity }
+import xsbti.{ AnalysisCallback, DirectoryOutputLocation, JarOutputLocation, OutputLocation, Logger, Problem, Reporter, Severity }
 import xsbti.compile._
 import scala.tools.nsc.{ backend, io, reporters, symtab, util, Phase, Global, Settings, SubComponent }
 import scala.tools.nsc.interactive.RangePositions
@@ -34,17 +34,27 @@ sealed trait GlobalCompat { self: Global =>
 }
 sealed abstract class CallbackGlobal(settings: Settings, reporter: reporters.Reporter, output: Output) extends Global(settings, reporter) with GlobalCompat {
   def callback: AnalysisCallback
-  def findClass(name: String): Option[(AbstractFile, Boolean)]
   lazy val outputLocs: Iterable[OutputLocation] = {
     output match {
       case single: SingleOutput =>
-        List(OutputLocation(single.outputLocation))
+        List(OutputLocation.create(single.outputLocation))
       case multi: MultipleOutput =>
         multi.outputGroups.toStream map { og =>
-          OutputLocation.Directory(og.outputDirectory)
+          new DirectoryOutputLocation(og.outputDirectory)
         }
     }
   }
+
+  lazy val outputJars =
+    outputLocs.collect {
+      case jol: JarOutputLocation => jol
+    }
+
+  lazy val outputDirectories =
+    outputLocs.collect {
+      case dol: DirectoryOutputLocation => dol.file
+    }
+
   // Map source files to public inherited dependencies.  These dependencies are tracked as the symbol for the dealiased base class.
   val inheritedDependencies = new mutable.HashMap[File, mutable.Set[Symbol]]
   def addInheritedDependencies(file: File, deps: Iterable[Symbol]) {
@@ -238,19 +248,6 @@ private final class CachedCompiler0(args: Array[String], output: Output, initial
       superDropRun()
       reporter = null
     }
-
-    def findClass(name: String): Option[(AbstractFile, Boolean)] =
-      getOutputClass(name).map(f => (f, true)) orElse findOnClassPath(name).map(f => (f, false))
-
-    def getOutputClass(name: String): Option[AbstractFile] =
-      {
-        // This could be improved if a hint where to look is given.
-        val className = name.replace('.', '/') + ".class"
-        outputDirs map (new File(_, className)) find (_.exists) map (AbstractFile.getFile(_))
-      }
-
-    def findOnClassPath(name: String): Option[AbstractFile] =
-      classPath.findClass(name).flatMap(_.binary.asInstanceOf[Option[AbstractFile]])
 
     private[this] var callback0: AnalysisCallback = null
     def callback: AnalysisCallback = callback0
