@@ -1,6 +1,7 @@
 package xsbti
 
 import java.io.File
+import java.net.URL
 import scala.collection.mutable.ArrayBuffer
 import xsbti.api.SourceAPI
 
@@ -14,7 +15,7 @@ class TestCallback(override val nameHashing: Boolean = false) extends AnalysisCa
 
 	def sourceDependency(dependsOn: File, source: File, inherited: Boolean) { sourceDependencies += ((dependsOn, source, inherited)) }
 	def binaryDependency(binary: File, name: String, source: File, inherited: Boolean) { binaryDependencies += ((binary, name, source, inherited)) }
-	def generatedClass(source: File, module: File, name: String) { products += ((source, module, name)) }
+	def generatedClass(source: File, module: URL, name: String) { products += ((source, module, name)) }
 
 	def usedName(source: File, name: String) { usedNames(source) += name }
 	def api(source: File, sourceAPI: SourceAPI): Unit = {

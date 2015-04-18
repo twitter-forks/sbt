@@ -4,6 +4,7 @@
 package xsbti;
 
 import java.io.File;
+import java.net.URL;
 
 public interface AnalysisCallback
 {
@@ -21,7 +22,7 @@ public interface AnalysisCallback
 	public void binaryDependency(File binary, String name, File source, boolean publicInherited);
 	/** Called to indicate that the source file <code>source</code> produces a class file at
 	* <code>module</code> contain class <code>name</code>.*/
-	public void generatedClass(File source, File module, String name);
+	public void generatedClass(File source, URL module, String name);
 	/** Called when the public API of a source file is extracted. */
 	public void api(File sourceFile, xsbti.api.SourceAPI source);
 	public void usedName(File sourceFile, String names);
