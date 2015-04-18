@@ -27,7 +27,7 @@ object Dependency {
  * where it originates from. The Symbol->Classfile mapping is implemented by
  * LocateClassFile that we inherit from.
  */
-final class Dependency(val global: CallbackGlobal) extends Compat {
+final class Dependency(val global: CallbackGlobal) extends LocateClassFile {
   import global._
 
   def newPhase(prev: Phase): Phase = new DependencyPhase(prev)
@@ -35,7 +35,7 @@ final class Dependency(val global: CallbackGlobal) extends Compat {
     override def description = "Extracts dependency information"
     def name = Dependency.name
     def run {
-      lazy val locator = new ClassFileLocator(global)
+      lazy val locator = classFileLocator()
       for (unit <- currentRun.units if !unit.isJava) {
         // build dependencies structure
         val sourceFile = unit.source.file.file

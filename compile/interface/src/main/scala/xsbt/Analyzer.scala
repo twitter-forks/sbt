@@ -13,7 +13,7 @@ import xsbti.{ AnalysisCallback, DirectoryOutputLocation, JarOutputLocation, Out
 object Analyzer {
   def name = "xsbt-analyzer"
 }
-final class Analyzer(val global: CallbackGlobal) {
+final class Analyzer(val global: CallbackGlobal) extends LocateClassFile {
   import global._
 
   def newPhase(prev: Phase): Phase = new AnalyzerPhase(prev)
@@ -22,7 +22,7 @@ final class Analyzer(val global: CallbackGlobal) {
 
     def name = Analyzer.name
     def run {
-      lazy val locator = ClassFileLocator(global)
+      lazy val locator = classFileLocator()
 
       // build list of generated classes
       for (unit <- currentRun.units if !unit.isJava) {
@@ -31,12 +31,11 @@ final class Analyzer(val global: CallbackGlobal) {
           val sym = iclass.symbol
           def addGenerated(separatorRequired: Boolean) {
             locator.getOutputClassURL(sym, separatorRequired).foreach { classURL =>
-              val className = locator.className(sym, '.', separatorRequired)
-              callback.generatedClass(sourceFile, classURL, className)
+              callback.generatedClass(sourceFile, classURL, className(sym, '.', separatorRequired))
             }
           }
           if (sym.isModuleClass && !sym.isImplClass) {
-            if (locator.isTopLevelModule(sym) && sym.companionClass == NoSymbol)
+            if (isTopLevelModule(sym) && sym.companionClass == NoSymbol)
               addGenerated(false)
             addGenerated(true)
           } else
