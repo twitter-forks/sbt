@@ -30,9 +30,10 @@ final class Analyzer(val global: CallbackGlobal) {
         for (iclass <- unit.icode) {
           val sym = iclass.symbol
           def addGenerated(separatorRequired: Boolean) {
-            val classFile = locator.getOutputClass(sym, separatorRequired)
-            val className = locator.className(sym, '.', separatorRequired)
-            callback.generatedClass(sourceFile, classFile, className)
+            locator.getOutputClassURL(sym, separatorRequired).foreach { classURL =>
+              val className = locator.className(sym, '.', separatorRequired)
+              callback.generatedClass(sourceFile, classURL, className)
+            }
           }
           if (sym.isModuleClass && !sym.isImplClass) {
             if (locator.isTopLevelModule(sym) && sym.companionClass == NoSymbol)

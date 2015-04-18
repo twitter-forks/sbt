@@ -63,12 +63,15 @@ case class ClassFileLocator[G <: CallbackGlobal](global: G) extends Compat[G] {
     getOutputClass(name).map(f => (f, true)) orElse findOnClassPath(name).map(f => (f, false))
 
   def getOutputClass(name: String): Option[AbstractFile] =
-    getOutputClassForFilename(classFileName(name)).map(AbstractFile.getURL)
+    getOutputClassURLForFilename(classFileName(name)).map(AbstractFile.getURL)
 
   def getOutputClass(sym: G#Symbol, separatorRequired: Boolean): Option[AbstractFile] =
-    getOutputClassForFilename(classFileName(sym, separatorRequired)).map(AbstractFile.getURL)
+    getOutputClassURL(sym, separatorRequired).map(AbstractFile.getURL)
 
-  def getOutputClassForFilename(filename: String): Option[URL] =
+  def getOutputClassURL(sym: G#Symbol, separatorRequired: Boolean): Option[URL] =
+    getOutputClassURLForFilename(classFileName(sym, separatorRequired))
+
+  def getOutputClassURLForFilename(filename: String): Option[URL] =
     outputJarContents.collectFirst {
       // scan jars first since they're indexed
       case (jarURI, classFiles) if classFiles(filename) =>

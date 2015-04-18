@@ -9,6 +9,7 @@ import xsbti.compile.{ DependencyChanges, Output, SingleOutput, MultipleOutput }
 import xsbti.{ Position, Problem, Severity }
 import Logger.{ m2o, problem }
 import java.io.File
+import java.net.URL
 import xsbti.api.Definition
 
 object IncrementalCompile {
@@ -72,9 +73,9 @@ private final class AnalysisCallback(internalMap: File => Option[File], external
   private[this] val reporteds = new HashMap[File, ListBuffer[Problem]]
   private[this] val binaryDeps = new HashMap[File, Set[File]]
   // source file to set of generated (class file, class name)
-  private[this] val classes = new HashMap[File, Set[(File, String)]]
+  private[this] val classes = new HashMap[File, Set[(URL, String)]]
   // generated class file to its source file
-  private[this] val classToSource = new HashMap[File, File]
+  private[this] val classToSource = new HashMap[URL, File]
   // all internal source depenencies, including direct and inherited
   private[this] val sourceDeps = new HashMap[File, Set[File]]
   // inherited internal source dependencies
@@ -134,11 +135,10 @@ private final class AnalysisCallback(internalMap: File => Option[File], external
         externalBinaryDependency(classFile, name, source, inherited)
     }
 
-  def generatedClass(source: File, module: File, name: String) =
-    {
-      add(classes, source, (module, name))
-      classToSource.put(module, source)
-    }
+  def generatedClass(source: File, module: URL, name: String) = {
+    add(classes, source, (module, name))
+    classToSource.put(module, source)
+  }
 
   // empty value used when name hashing algorithm is disabled
   private val emptyNameHashes = new xsbti.api._internalOnly_NameHashes(Array.empty, Array.empty)
