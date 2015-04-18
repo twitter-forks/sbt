@@ -38,8 +38,8 @@ import scala.tools.nsc.symtab.Flags
  * The technique described above is used in several places below.
  *
  */
-abstract class Compat {
-  val global: Global
+abstract class Compat[G <: Global] {
+  val global: G
   import global._
   val LocalChild = global.tpnme.LOCAL_CHILD
   val Nullary = global.NullaryMethodType
@@ -83,7 +83,7 @@ abstract class Compat {
       val MACRO = Flags.MACRO // will be DummyValue for versions before 2.10
       MACRO != DummyValue && s.hasFlag(MACRO)
     }
-  def moduleSuffix(s: Symbol): String = s.moduleSuffix
+  def moduleSuffix(s: G#Symbol): String = s.moduleSuffix
 
   private[this] def sourceCompatibilityOnly: Nothing = throw new RuntimeException("For source compatibility only: should not get here.")
 
