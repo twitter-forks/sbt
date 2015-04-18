@@ -35,10 +35,14 @@ sealed trait GlobalCompat { self: Global =>
 sealed abstract class CallbackGlobal(settings: Settings, reporter: reporters.Reporter, output: Output) extends Global(settings, reporter) with GlobalCompat {
   def callback: AnalysisCallback
   def findClass(name: String): Option[(AbstractFile, Boolean)]
-  lazy val outputDirs: Iterable[File] = {
+  lazy val outputLocs: Iterable[OutputLocation] = {
     output match {
-      case single: SingleOutput  => List(single.outputLocation)
-      case multi: MultipleOutput => multi.outputGroups.toStream map (_.outputDirectory)
+      case single: SingleOutput =>
+        List(OutputLocation(single.outputLocation))
+      case multi: MultipleOutput =>
+        multi.outputGroups.toStream map { og =>
+          OutputLocation.Directory(og.outputDirectory)
+        }
     }
   }
   // Map source files to public inherited dependencies.  These dependencies are tracked as the symbol for the dealiased base class.

@@ -20,38 +20,6 @@ import xsbti.api.Source
 import xsbti.compile.{ CompileOrder, DependencyChanges, GlobalsCache, Output, SingleOutput, MultipleOutput, CompileProgress }
 import CompileOrder.{ JavaThenScala, Mixed, ScalaThenJava }
 
-/**
- * Trait to differentiate Jar outputs from Directory outputs.
- */
-sealed trait OutputLocation {
-  def file: File
-  def prepare(): Unit
-}
-object OutputLocation {
-  /**
-   * @return Creates an OutputLocation for the given file, which will represent either
-   * a jar or directory.
-   */
-  def apply(file: File) =
-    if (endsWithJar(file)) {
-      Jar(file)
-    } else {
-      Directory(file)
-    }
-
-  case class Jar(file: File) extends OutputLocation {
-    assert(endsWithJar(file), s"${file} is not a jarfile.")
-    def prepare() = IO.createDirectory(file.getParentFile)
-  }
-  case class Directory(file: File) extends OutputLocation {
-    assert(!endsWithJar(file), s"${file} is (probably) not a directory.")
-    def prepare() = IO.createDirectory(file)
-  }
-
-  private def endsWithJar(file: File): Boolean =
-    file.getName.toLowerCase.endsWith(".jar")
-}
-
 final class CompileConfiguration(val sources: Seq[File], val classpath: Seq[File],
   val previousAnalysis: Analysis, val previousSetup: Option[CompileSetup], val currentSetup: CompileSetup, val progress: Option[CompileProgress], val getAnalysis: File => Option[Analysis], val definesClass: DefinesClass,
   val reporter: Reporter, val compiler: AnalyzingCompiler, val javac: xsbti.compile.JavaCompiler, val cache: GlobalsCache, val incOptions: IncOptions)
