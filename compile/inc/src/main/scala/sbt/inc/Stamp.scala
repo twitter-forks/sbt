@@ -38,7 +38,7 @@ trait Stamps extends ReadStamps {
   def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: URL => Boolean): Stamps
 
   def ++(o: Stamps): Stamps
-  def groupBy[K](prod: Map[K, File => Boolean], sourcesGrouping: File => K, bin: Map[K, File => Boolean]): Map[K, Stamps]
+  def groupBy[K](prod: Map[K, URL => Boolean], sourcesGrouping: File => K, bin: Map[K, URL => Boolean]): Map[K, Stamps]
 }
 
 sealed trait Stamp {

@@ -2,6 +2,7 @@ package sbt
 package inc
 
 import java.io._
+import java.net.URL
 import sbt.{ CompileSetup, Relation }
 import xsbti.api.{ Compilation, Source }
 import xsbti.compile.{ MultipleOutput, SingleOutput }
@@ -80,7 +81,7 @@ object TextAnalysisFormat {
   }
 
   private[this] object VersionF {
-    val currentVersion = "5"
+    val currentVersion = "6"
 
     def write(out: Writer) {
       out.write("format version: %s\n".format(currentVersion))
@@ -184,7 +185,8 @@ object TextAnalysisFormat {
     }
 
     def write(out: Writer, stamps: Stamps) {
-      def doWriteMap[V](header: String, m: Map[File, V]) = writeMap(out)(header, m, { v: V => v.toString })
+      def doWriteMap[K, V](header: String, m: Map[K, V]) =
+        writeMap(out)(header, m, { v: V => v.toString })
 
       doWriteMap(Headers.products, stamps.products)
       doWriteMap(Headers.sources, stamps.sources)
@@ -193,11 +195,12 @@ object TextAnalysisFormat {
     }
 
     def read(in: BufferedReader): Stamps = {
-      def doReadMap[V](expectedHeader: String, s2v: String => V) = readMap(in)(expectedHeader, new File(_), s2v)
-      val products = doReadMap(Headers.products, Stamp.fromString)
-      val sources = doReadMap(Headers.sources, Stamp.fromString)
-      val binaries = doReadMap(Headers.binaries, Stamp.fromString)
-      val classNames = doReadMap(Headers.classNames, identity[String])
+      def s2f(s: String) = new File(s)
+      def s2u(s: String) = new URL(s)
+      val products = readMap(in)(Headers.products, s2u, Stamp.fromString)
+      val sources = readMap(in)(Headers.sources, s2f, Stamp.fromString)
+      val binaries = readMap(in)(Headers.binaries, s2u, Stamp.fromString)
+      val classNames = readMap(in)(Headers.classNames, s2u, identity[String])
 
       Stamps(products, sources, binaries, classNames)
     }
@@ -374,15 +377,20 @@ object TextAnalysisFormat {
   private[this] def readSeq[T](in: BufferedReader)(expectedHeader: String, s2t: String => T): Seq[T] =
     (readPairs(in)(expectedHeader, identity[String], s2t).toSeq.sortBy(_._1) map (_._2))
 
-  private[this] def writeMap[K, V](out: Writer)(header: String, m: Map[K, V], v2s: V => String, inlineVals: Boolean = true)(implicit ord: Ordering[K]) {
+  private[this] def writeMap[K, V](out: Writer)(header: String, m: Map[K, V], v2s: V => String, inlineVals: Boolean = true) {
     writeHeader(out, header)
     writeSize(out, m.size)
-    m.keys.toSeq.sorted foreach { k =>
-      out.write(k.toString)
-      out.write(" -> ")
-      if (!inlineVals) out.write("\n") // Put large vals on their own line, to save string munging on read.
-      out.write(v2s(m(k)))
-      out.write("\n")
+    // flatten to sorted, string-keyed tuples
+    m.toSeq.map {
+      case (k, v) =>
+        k.toString -> v
+    }.sortBy(_._1).foreach {
+      case (k, v) =>
+        out.write(k)
+        out.write(" -> ")
+        if (!inlineVals) out.write("\n") // Put large vals on their own line, to save string munging on read.
+        out.write(v2s(v))
+        out.write("\n")
     }
   }
 

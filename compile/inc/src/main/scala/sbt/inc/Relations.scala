@@ -40,7 +40,7 @@ trait Relations {
   def definesClass(name: String): Set[File]
 
   /** The classes that were generated for source file `src`. */
-  def products(src: File): Set[File]
+  def products(src: File): Set[URL]
   /** The source files that generated class file `prod`.  This is typically a set containing a single file. */
   def produced(prod: URL): Set[File]
 

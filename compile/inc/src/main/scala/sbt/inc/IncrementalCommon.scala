@@ -30,7 +30,8 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       debug("********* Pruned: \n" + pruned.relations + "\n*********")
 
       val fresh = doCompile(invalidated, binaryChanges)
-      classfileManager.generated(fresh.relations.allProducts)
+      // FIXME: XXX: ClassfileManager probably needs an overhaul to track on a directory/jar basis.
+      // classfileManager.generated(fresh.relations.allProducts)
       debug("********* Fresh: \n" + fresh.relations + "\n*********")
       val merged = pruned ++ fresh //.copy(relations = pruned.relations ++ fresh.relations, apis = pruned.apis ++ fresh.apis)
       debug("********* Merged: \n" + merged.relations + "\n*********")
@@ -42,7 +43,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       cycle(incInv, allSources, emptyChanges, merged, doCompile, classfileManager, cycleNum + 1)
     }
   private[this] def emptyChanges: DependencyChanges = new DependencyChanges {
-    val modifiedBinaries = new Array[File](0)
+    val modifiedBinaries = new Array[URL](0)
     val modifiedClasses = new Array[String](0)
     def isEmpty = true
   }

@@ -9,6 +9,7 @@ import xsbti.{ Position, Problem, Severity }
 import xsbti.compile.{ CompileOrder, Output => APIOutput, SingleOutput, MultipleOutput }
 import MultipleOutput.OutputGroup
 import java.io.File
+import java.net.URL
 import sbinary._
 import DefaultProtocol._
 import DefaultProtocol.tuple2Format
@@ -18,6 +19,7 @@ import Relations.{ Source => RSource, SourceDependencies }
 @deprecated("Replaced by TextAnalysisFormat. OK to remove in 0.14.", since = "0.13.1")
 object AnalysisFormats {
   type RFF = Relation[File, File]
+  type RFU = Relation[File, URL]
   type RFS = Relation[File, String]
 
   import System.{ currentTimeMillis => now }
@@ -85,7 +87,7 @@ object AnalysisFormats {
     )(fileFormat)
   implicit val outputFormat: Format[APIOutput] = asUnion(singleOutputFormat, multipleOutputFormat)
 
-  implicit def stampsFormat(implicit prodF: Format[Map[File, Stamp]], srcF: Format[Map[File, Stamp]], binF: Format[Map[File, Stamp]], nameF: Format[Map[File, String]]): Format[Stamps] =
+  implicit def stampsFormat(implicit prodF: Format[Map[URL, Stamp]], srcF: Format[Map[File, Stamp]], binF: Format[Map[URL, Stamp]], nameF: Format[Map[URL, String]]): Format[Stamps] =
     asProduct4(Stamps.apply _)(s => (s.products, s.sources, s.binaries, s.classNames))(prodF, srcF, binF, nameF)
 
   implicit def stampFormat(implicit hashF: Format[Hash], modF: Format[LastModified], existsF: Format[Exists]): Format[Stamp] =
@@ -94,9 +96,9 @@ object AnalysisFormats {
   implicit def apisFormat(implicit internalF: Format[Map[File, Source]], externalF: Format[Map[String, Source]]): Format[APIs] =
     asProduct2(APIs.apply _)(as => (as.internal, as.external))(internalF, externalF)
 
-  implicit def relationsFormat(implicit prodF: Format[RFF], binF: Format[RFF], directF: Format[RSource], inheritedF: Format[RSource], memberRefF: Format[SourceDependencies], inheritanceF: Format[SourceDependencies], csF: Format[RFS], namesF: Format[RFS]): Format[Relations] =
+  implicit def relationsFormat(implicit prodF: Format[RFU], binF: Format[RFU], directF: Format[RSource], inheritedF: Format[RSource], memberRefF: Format[SourceDependencies], inheritanceF: Format[SourceDependencies], csF: Format[RFS], namesF: Format[RFS]): Format[Relations] =
     {
-      def makeRelation(srcProd: RFF, binaryDep: RFF, direct: RSource, publicInherited: RSource,
+      def makeRelation(srcProd: RFU, binaryDep: RFU, direct: RSource, publicInherited: RSource,
         memberRef: SourceDependencies, inheritance: SourceDependencies, classes: RFS,
         nameHashing: Boolean, names: RFS): Relations = if (nameHashing) {
         def isEmpty(sourceDependencies: RSource): Boolean =
@@ -111,7 +113,7 @@ object AnalysisFormats {
         assert(isEmpty(memberRef), "Direct dependencies are not empty but `nameHashing` flag is enabled.")
         Relations.make(srcProd, binaryDep, direct, publicInherited, classes)
       }
-      asProduct9[Relations, RFF, RFF, RSource, RSource, SourceDependencies, SourceDependencies, RFS, Boolean, RFS]((a, b, c, d, e, f, g, h, i) => makeRelation(a, b, c, d, e, f, g, h, i))(
+      asProduct9[Relations, RFU, RFU, RSource, RSource, SourceDependencies, SourceDependencies, RFS, Boolean, RFS]((a, b, c, d, e, f, g, h, i) => makeRelation(a, b, c, d, e, f, g, h, i))(
         rs => (rs.srcProd, rs.binaryDep, rs.direct, rs.publicInherited, rs.memberRef, rs.inheritance, rs.classes, rs.nameHashing, rs.names))(
           prodF, binF, directF, inheritedF, memberRefF, inheritanceF, csF, implicitly[Format[Boolean]], namesF)
     }

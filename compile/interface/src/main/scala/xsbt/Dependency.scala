@@ -8,6 +8,7 @@ import io.{ AbstractFile, PlainFile, ZipArchive }
 import symtab.Flags
 
 import java.io.File
+import java.net.URL
 
 object Dependency {
   def name = "xsbt-dependency"
@@ -57,16 +58,22 @@ final class Dependency(val global: CallbackGlobal) extends LocateClassFile {
          * run) or from class file and calls respective callback method.
          */
         def processDependency(on: Symbol, inherited: Boolean) {
-          def binaryDependency(file: File, className: String) = callback.binaryDependency(file, className, sourceFile, inherited)
+          def binaryDependency(file: URL, className: String) =
+            callback.binaryDependency(file, className, sourceFile, inherited)
           val onSource = on.sourceFile
           if (onSource == null) {
             locator.classFile(on) match {
               case Some((f, className, inOutDir)) =>
                 if (inOutDir && on.isJavaDefined) registerTopLevelSym(on)
                 f match {
-                  case ze: ZipArchive#Entry => for (zip <- ze.underlyingSource; zipFile <- Option(zip.file)) binaryDependency(zipFile, className)
-                  case pf: PlainFile        => binaryDependency(pf.file, className)
-                  case _                    => ()
+                  case ze: ZipArchive#Entry =>
+                    for (zip <- ze.underlyingSource; zipFile <- Option(zip.file)) {
+                      binaryDependency(new URL("jar:" + zipFile + "!/" + ze.path), className)
+                    }
+                  case pf: PlainFile =>
+                    binaryDependency(pf.file.toURI.toURL, className)
+                  case _ =>
+                    ()
                 }
               case None => ()
             }

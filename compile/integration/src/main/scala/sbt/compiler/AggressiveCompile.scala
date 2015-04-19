@@ -82,9 +82,9 @@ class AggressiveCompile(cacheFile: File) {
       val cArgs = new CompilerArguments(compiler.scalaInstance, compiler.cp)
       val searchClasspath = explicitBootClasspath(options.options) ++ withBootclasspath(cArgs, absClasspath)
       val entry = Locate.entry(searchClasspath, definesClass)
+      val outputLocs = outputLocations(output)
 
       val compile0 = (include: Set[File], changes: DependencyChanges, callback: AnalysisCallback) => {
-        val outputLocs = outputLocations(output)
         outputLocs foreach (_.prepare)
         val incSrc = sources.filter(include)
         val (javaSrcs, scalaSrcs) = incSrc partition javaOnly

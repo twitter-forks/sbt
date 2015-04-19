@@ -45,10 +45,10 @@ private[sbt] object Analyze {
       def processDependency(tpe: String, inherited: Boolean) {
         trapAndLog(log) {
           for (url <- Option(loader.getResource(tpe.replace('.', '/') + ClassExt)); file <- urlAsFile(url, log)) {
-            if (url.getProtocol == "jar")
+            if (url.getProtocol == "jar") {
               analysis.binaryDependency(file, tpe, source, inherited)
-            else {
-              assume(url.getProtocol == "file")
+            } else {
+              assume(url.getProtocol == " file")
               productToSource.get(file) match {
                 case Some(dependsOn) => analysis.sourceDependency(dependsOn, source, inherited)
                 case None            => analysis.binaryDependency(file, tpe, source, inherited)

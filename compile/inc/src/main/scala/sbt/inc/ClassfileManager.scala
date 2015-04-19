@@ -2,7 +2,6 @@ package sbt.inc
 
 import sbt.IO
 import java.io.File
-import java.net.URL
 import collection.mutable
 
 /**
@@ -17,8 +16,12 @@ trait ClassfileManager {
    */
   def delete(classes: Iterable[File]): Unit
 
-  /** Called once per compilation step with the class files generated during that step.*/
-  def generated(classes: Iterable[URL]): Unit
+  /**
+   * Called once per compilation step with files generated during that step.
+   *
+   * Note that in the case of jar output, this may be called precisely once.
+   */
+  def generated(files: Iterable[File]): Unit
 
   /** Called once at the end of the whole compilation run, with `success` indicating whether compilation succeeded (true) or not (false).*/
   def complete(success: Boolean): Unit
@@ -28,7 +31,7 @@ object ClassfileManager {
   /** Constructs a minimal ClassfileManager implementation that immediately deletes class files when requested. */
   val deleteImmediately: () => ClassfileManager = () => new ClassfileManager {
     def delete(classes: Iterable[File]): Unit = IO.deleteFilesEmptyDirs(classes)
-    def generated(classes: Iterable[URL]) {}
+    def generated(classes: Iterable[File]) {}
     def complete(success: Boolean) {}
   }
   @deprecated("Use overloaded variant that takes additional logger argument, instead.", "0.13.5")
@@ -41,11 +44,11 @@ object ClassfileManager {
     IO.createDirectory(tempDir)
     logger.debug(s"Created transactional ClassfileManager with tempDir = $tempDir")
 
-    private[this] val generatedClasses = new mutable.HashSet[URL]
+    private[this] val generatedClasses = new mutable.HashSet[File]
     private[this] val movedClasses = new mutable.HashMap[File, File]
 
     private def showEntries[E](entries: Iterable[E]): String = entries.map(f => s"\t$f").mkString("\n")
-    def delete(classes: Iterable[URL]) {
+    def delete(classes: Iterable[File]) {
       logger.debug(s"About to delete class files:\n${showEntries(classes)}")
       val toBeBackedUp = classes.filter(c => c.exists && !movedClasses.contains(c) && !generatedClasses(c))
       logger.debug(s"We backup classs files:\n${showEntries(toBeBackedUp)}")
@@ -54,7 +57,7 @@ object ClassfileManager {
       }
       IO.deleteFilesEmptyDirs(classes)
     }
-    def generated(classes: Iterable[URL]): Unit = {
+    def generated(classes: Iterable[File]): Unit = {
       logger.debug(s"Registering generated classes:\n${showEntries(classes)}")
       generatedClasses ++= classes
     }

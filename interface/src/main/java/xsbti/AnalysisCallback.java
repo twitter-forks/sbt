@@ -19,7 +19,7 @@ public interface AnalysisCallback
 	* class named <code>name</code> from class or jar file <code>binary</code>.
 	* If <code>publicInherited</code> is true, this dependency is a result of inheritance by a
 	* template accessible outside of the source file. */
-	public void binaryDependency(File binary, String name, File source, boolean publicInherited);
+	public void binaryDependency(URL binary, String name, File source, boolean publicInherited);
 	/** Called to indicate that the source file <code>source</code> produces a class file at
 	* <code>module</code> contain class <code>name</code>.*/
 	public void generatedClass(File source, URL module, String name);

@@ -58,7 +58,8 @@ object Incremental {
 
   private[sbt] def prune(invalidatedSrcs: Set[File], previous: Analysis, classfileManager: ClassfileManager): Analysis =
     {
-      classfileManager.delete(invalidatedSrcs.flatMap(previous.relations.products))
+      // FIXME: XXX: ClassfileManager needs an overhaul
+      // classfileManager.delete(invalidatedSrcs.flatMap(previous.relations.products))
       previous -- invalidatedSrcs
     }
 
