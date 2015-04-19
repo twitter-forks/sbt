@@ -193,9 +193,10 @@ object Relations {
    */
   private[inc] val existingRelations = {
     val string2File: String => File = new File(_)
+    val string2URL: String => URL = new URL(_)
     List(
-      ("products", string2File),
-      ("binary dependencies", string2File),
+      ("products", string2URL),
+      ("binary dependencies", string2URL),
       ("direct source dependencies", string2File),
       ("direct external dependencies", identity[String] _),
       ("public inherited source dependencies", string2File),
