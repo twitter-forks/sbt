@@ -118,7 +118,7 @@ object Analysis {
       val (j, s) = a.apis.allInternalSources.partition(_.getName.endsWith(".java"))
       val c = a.stamps.allProducts
       val ext = a.apis.allExternals
-      val jars = a.relations.allBinaryDeps.filter(_.getName.endsWith(".jar"))
+      val jars = a.relations.allBinaryDeps.filter(_.getProtocol == ("jar"))
       val unreportedCount = a.infos.allInfos.values.map(_.unreportedProblems.size).sum
       val sections =
         counted("Scala source", "", "s", s.size) ++
