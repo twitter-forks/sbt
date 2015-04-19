@@ -8,7 +8,7 @@ import scala.tools.nsc.io.AbstractFile
 
 import scala.collection.JavaConverters._
 
-import java.io.File
+import java.io.{ File, FileNotFoundException }
 import java.net.URL
 import java.util.zip.{ ZipEntry, ZipException, ZipFile }
 
@@ -84,9 +84,9 @@ abstract class LocateClassFile extends Compat {
     def getOutputClassURLForFilename(filename: String): Option[URL] =
       outputJarContents.collect {
         // scan jars first since they're indexed
-        case (jarURI, classFiles) if classFiles(filename) => jarURI
-      }.headOption.map { jarURI =>
-        new URL(jarURI + "/!/" + filename)
+        case (jarURL, classFiles) if classFiles(filename) => jarURL
+      }.headOption.map { jarURL =>
+        new URL(jarURL + "!/" + filename)
       }.orElse {
         // scan directories
         outputDirectories.map(new File(_, filename)).find(_.exists()).map(_.toURL)
@@ -94,16 +94,24 @@ abstract class LocateClassFile extends Compat {
 
     /** @return An index of output jar Files to the filenames they contain. */
     private[this] val outputJarContents: Map[URL, Set[String]] =
-      outputJars.map { jol =>
+      outputJars.flatMap { jol =>
         // TODO: from sbt.inc.Locate
-        val jar = try { new ZipFile(jol.file, ZipFile.OPEN_READ) } catch {
-          // ZipException doesn't include the file name :(
-          case e: ZipException => throw new RuntimeException("Error opening zip file: " + jol.file, e)
-        }
-        try {
-          jol.file.toURI.toURL -> (jar.entries.asScala: Iterator[ZipEntry]).map(_.getName).toSet
-        } finally {
-          jar.close()
+        val jarOpt =
+          try {
+            Some(new ZipFile(jol.file, ZipFile.OPEN_READ))
+          } catch {
+            case e: FileNotFoundException =>
+              None
+            case e: ZipException =>
+              throw new RuntimeException("Error opening zip file: " + jol.file, e)
+          }
+        jarOpt.map { jar =>
+          try {
+            val fileEntries = (jar.entries.asScala: Iterator[ZipEntry]).filterNot(_.isDirectory)
+            jol.file.toURI.toURL -> fileEntries.map(_.getName).toSet
+          } finally {
+            jar.close()
+          }
         }
       }.toMap
   }
