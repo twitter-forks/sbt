@@ -4,14 +4,16 @@
 package sbt
 
 import java.io.{ File, Writer }
+import java.net.URL
 import inc.Relations
 
 object DotGraph {
   private def fToString(roots: Iterable[File]): (File => String) =
     (x: File) => sourceToString(roots, x)
+  val u2f: URL => File = (u: URL) => new File(u.getPath)
   def sources(relations: Relations, outputDirectory: File, sourceRoots: Iterable[File]) {
-    val toString = fToString(sourceRoots)
-    apply(relations, outputDirectory, toString, toString)
+    val f2s: File => String = fToString(sourceRoots)
+    apply(relations, outputDirectory, f2s, f2s compose u2f)
   }
   def packages(relations: Relations, outputDirectory: File, sourceRoots: Iterable[File]) {
     val packageOnly = (path: String) =>
@@ -20,14 +22,14 @@ object DotGraph {
         val packagePath = (if (last > 0) path.substring(0, last) else path).trim
         if (packagePath.isEmpty) "" else packagePath.replace(File.separatorChar, '.')
       }
-    val toString = packageOnly compose fToString(sourceRoots)
-    apply(relations, outputDirectory, toString, toString)
+    val f2s = packageOnly compose fToString(sourceRoots)
+    apply(relations, outputDirectory, f2s, f2s compose u2f)
   }
-  def apply(relations: Relations, outputDir: File, sourceToString: File => String, externalToString: File => String) {
+  def apply(relations: Relations, outputDir: File, sourceToString: File => String, externalToString: URL => String) {
     def file(name: String) = new File(outputDir, name)
     IO.createDirectory(outputDir)
     generateGraph(file("int-source-deps"), "dependencies", relations.internalSrcDep, sourceToString, sourceToString)
-    generateGraph(file("binary-dependencies"), "externalDependencies", relations.binaryDep, externalToString, sourceToString)
+    generateGraph(file("binary-dependencies"), "externalDependencies", relations.binaryDep, sourceToString, externalToString)
   }
 
   def generateGraph[Key, Value](file: File, graphName: String, relation: Relation[Key, Value],
@@ -51,6 +53,7 @@ object DotGraph {
 
     IO.writeLines(file, lines)
   }
+
   def sourceToString(roots: Iterable[File], source: File) =
     relativized(roots, source).trim.stripSuffix(".scala").stripSuffix(".java")
 

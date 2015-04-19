@@ -5,6 +5,7 @@ package sbt
 package inc
 
 import java.io.File
+import java.net.URL
 import java.util.zip.{ ZipException, ZipFile }
 import Function.const
 
@@ -34,12 +35,26 @@ object Locate {
   /**
    * Returns a function that searches the provided class path for
    * a class name and returns the entry that defines that class.
+   *
+   * TODO: refactor in terms of native URL use.
    */
-  def entry(classpath: Seq[File], f: DefinesClass): String => Option[File] =
-    {
-      val entries = classpath.toStream.map { entry => (entry, f(entry)) }
-      className => entries collect { case (entry, defines) if defines(className) => entry } headOption;
-    }
+  def entry(classpath: Seq[File], f: DefinesClass): String => Option[URL] = {
+    val entries =
+      classpath.toStream.map { file =>
+        (file.toURI.toURL, f(file))
+      }
+    def fn(className: String): Option[URL] =
+      entries.collect {
+        case (url, defines) if defines(className) =>
+          url.getProtocol match {
+            case "jar" =>
+              new URL(url + "!/" + fromClassName(className))
+            case _ =>
+              url
+          }
+      }.headOption
+    fn
+  }
 
   def getValue[S](get: File => String => Option[S])(entry: File): String => Either[Boolean, S] =
     {
@@ -66,6 +81,9 @@ object Locate {
       val entries = try { jar.entries.map(e => toClassName(e.getName)).toSet } finally { jar.close() }
       entries.contains _
     }
+
+  def fromClassName(entry: String): String =
+    entry.replace('.', '/') + ClassExt
 
   def toClassName(entry: String): String =
     entry.stripSuffix(ClassExt).replace('/', '.')

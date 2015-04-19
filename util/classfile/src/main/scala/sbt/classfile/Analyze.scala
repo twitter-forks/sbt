@@ -46,12 +46,15 @@ private[sbt] object Analyze {
         trapAndLog(log) {
           for (url <- Option(loader.getResource(tpe.replace('.', '/') + ClassExt)); file <- urlAsFile(url, log)) {
             if (url.getProtocol == "jar") {
-              analysis.binaryDependency(file, tpe, source, inherited)
+              // FIXME: XXX: re-enable for java
+              // analysis.binaryDependency(file, tpe, source, inherited)
             } else {
               assume(url.getProtocol == " file")
               productToSource.get(file) match {
                 case Some(dependsOn) => analysis.sourceDependency(dependsOn, source, inherited)
-                case None            => analysis.binaryDependency(file, tpe, source, inherited)
+                case None            =>
+                // FIXME: XXX: re-enable for java
+                // analysis.binaryDependency(file, tpe, source, inherited)
               }
             }
           }
