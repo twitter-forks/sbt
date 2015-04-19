@@ -145,10 +145,10 @@ class ScalaCompilerForUnitTesting(nameHashing: Boolean = false) {
     srcFile
   }
 
-  private def prepareCompiler(outputDir: File, analysisCallback: AnalysisCallback, classpath: String = "."): CachedCompiler0#Compiler = {
+  private def prepareCompiler(outputLoc: File, analysisCallback: AnalysisCallback, classpath: String = "."): CachedCompiler0#Compiler = {
     val args = Array.empty[String]
     object output extends SingleOutput {
-      def outputDirectory: File = outputDir
+      def outputLocation: File = outputLoc
     }
     val weakLog = new WeakLog(ConsoleLogger(), ConsoleReporter)
     val cachedCompiler = new CachedCompiler0(args, output, weakLog, false)

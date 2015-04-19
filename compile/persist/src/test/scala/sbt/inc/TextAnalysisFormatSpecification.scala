@@ -55,6 +55,7 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
     import TestCaseGenerators._
 
     def f(s: String) = new File(s)
+    def u(s: String) = f(s).toURI.toURL
     val aScala = f("A.scala")
     val bScala = f("B.scala")
     val aSource = genSource("A" :: "A$" :: Nil).sample.get
@@ -64,10 +65,10 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
     val sourceInfos = SourceInfos.makeInfo(Nil, Nil)
 
     var analysis = Analysis.empty(nameHashing)
-    analysis = analysis.addProduct(aScala, f("A.class"), exists, "A")
-    analysis = analysis.addProduct(aScala, f("A$.class"), exists, "A$")
+    analysis = analysis.addProduct(aScala, u("A.class"), exists, "A")
+    analysis = analysis.addProduct(aScala, u("A$.class"), exists, "A$")
     analysis = analysis.addSource(aScala, aSource, exists, Nil, Nil, sourceInfos)
-    analysis = analysis.addBinaryDep(aScala, f("x.jar"), "x", exists)
+    analysis = analysis.addBinaryDep(aScala, u("x.jar"), "x", exists)
     analysis = analysis.addExternalDep(aScala, "C", cSource, inherited = false)
 
     val writer = new StringWriter

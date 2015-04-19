@@ -2,6 +2,7 @@ package sbt
 package inc
 
 import java.io.File
+import java.net.URL
 
 import org.scalacheck._
 import Arbitrary._
@@ -48,10 +49,21 @@ object TestCaseGenerators {
     cs <- listOfN(n - 1, alphaNumChar)
   } yield (c :: cs).mkString
 
-  def genFile: Gen[File] = for {
+  def genFile(suffix: String = ""): Gen[File] = for {
     n <- choose(2, maxPathLen) // Paths have at least 2 segments.
     path <- listOfN(n, genFilePathSegment)
-  } yield new File(path.mkString("/"))
+  } yield new File(path.mkString("", "/", suffix))
+
+  def genURL: Gen[URL] = for {
+    isJar <- oneOf(true, false)
+    outerFile <- genFile(if (isJar) ".jar" else ".class")
+    innerFile <- genFile(".class")
+  } yield {
+    if (isJar)
+      new URL("jar:file:" + outerFile + "!/" + innerFile)
+    else
+      outerFile.toURI.toURL
+  }
 
   def genStamp: Gen[Stamp] = for {
     b <- oneOf(true, false)
@@ -128,7 +140,7 @@ object TestCaseGenerators {
     entries <- listOfN(srcs.length, containerOfN[Set, T](n, g))
   } yield Relation.reconstruct(zipMap(srcs, entries))
 
-  val genFileRelation = genRelation[File](unique(genFile)) _
+  val genURLRelation = genRelation[URL](unique(genURL)) _
   val genStringRelation = genRelation[String](unique(identifier)) _
 
   def genRSource(srcs: List[File]): Gen[Relations.Source] = for {
@@ -157,9 +169,9 @@ object TestCaseGenerators {
 
   def genRelations: Gen[Relations] = for {
     numSrcs <- choose(0, maxSources)
-    srcs <- listOfN(numSrcs, genFile)
-    srcProd <- genFileRelation(srcs)
-    binaryDep <- genFileRelation(srcs)
+    srcs <- listOfN(numSrcs, genFile())
+    srcProd <- genURLRelation(srcs)
+    binaryDep <- genURLRelation(srcs)
     direct <- genRSource(srcs)
     publicInherited <- genSubRSource(direct)
     classes <- genStringRelation(srcs)
@@ -168,9 +180,9 @@ object TestCaseGenerators {
 
   def genRelationsNameHashing: Gen[Relations] = for {
     numSrcs <- choose(0, maxSources)
-    srcs <- listOfN(numSrcs, genFile)
-    srcProd <- genFileRelation(srcs)
-    binaryDep <- genFileRelation(srcs)
+    srcs <- listOfN(numSrcs, genFile())
+    srcProd <- genURLRelation(srcs)
+    binaryDep <- genURLRelation(srcs)
     memberRef <- genRSourceDependencies(srcs)
     inheritance <- genSubRSourceDependencies(memberRef)
     classes <- genStringRelation(srcs)

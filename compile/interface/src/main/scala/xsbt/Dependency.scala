@@ -68,7 +68,7 @@ final class Dependency(val global: CallbackGlobal) extends LocateClassFile {
                 f match {
                   case ze: ZipArchive#Entry =>
                     for (zip <- ze.underlyingSource; zipFile <- Option(zip.file)) {
-                      binaryDependency(new URL("jar:" + zipFile + "!/" + ze.path), className)
+                      binaryDependency(new URL("jar:file:" + zipFile + "!/" + ze.path), className)
                     }
                   case pf: PlainFile =>
                     binaryDependency(pf.file.toURI.toURL, className)
