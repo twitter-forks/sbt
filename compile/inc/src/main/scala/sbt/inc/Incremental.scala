@@ -17,7 +17,7 @@ object Incremental {
     entry: String => Option[URL],
     previous: Analysis,
     current: ReadStamps,
-    forEntry: URL => Option[Analysis],
+    forEntry: File => Option[Analysis],
     doCompile: (Set[File], DependencyChanges) => Analysis,
     log: Logger,
     options: IncOptions)(implicit equivS: Equiv[Stamp]): (Boolean, Analysis) =

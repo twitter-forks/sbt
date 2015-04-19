@@ -16,7 +16,7 @@ object IncrementalCompile {
   def apply(sources: Set[File], entry: String => Option[URL],
     compile: (Set[File], DependencyChanges, xsbti.AnalysisCallback) => Unit,
     previous: Analysis,
-    forEntry: URL => Option[Analysis],
+    forEntry: File => Option[Analysis],
     output: Output, log: Logger,
     options: IncOptions): (Boolean, Analysis) =
     {
@@ -39,10 +39,10 @@ object IncrementalCompile {
       compile(srcs, changes, callback)
       callback.get
     }
-  def getExternalAPI(entry: String => Option[URL], forEntry: URL => Option[Analysis]): (URL, String) => Option[Source] =
+  def getExternalAPI(entry: String => Option[URL], forEntry: File => Option[Analysis]): (URL, String) => Option[Source] =
     (file: URL, className: String) =>
       entry(className) flatMap { defines =>
-        forEntry(defines) flatMap { analysis =>
+        forEntry(IO.asFile(defines)) flatMap { analysis =>
           analysis.relations.definesClass(className).headOption flatMap { src =>
             analysis.apis.internal get src
           }

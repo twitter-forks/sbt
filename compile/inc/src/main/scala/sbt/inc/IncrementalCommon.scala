@@ -127,7 +127,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
   }
 
   def changedInitial(entry: String => Option[URL], sources: Set[File], previousAnalysis: Analysis, current: ReadStamps,
-    forEntry: URL => Option[Analysis])(implicit equivS: Equiv[Stamp]): InitialChanges =
+    forEntry: File => Option[Analysis])(implicit equivS: Equiv[Stamp]): InitialChanges =
     {
       val previous = previousAnalysis.stamps
       val previousAPIs = previousAnalysis.apis
@@ -269,7 +269,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       newInv ++ initialDependsOnNew
     }
 
-  def externalBinaryModified(entry: String => Option[URL], analysis: URL => Option[Analysis], previous: Stamps, current: ReadStamps)(implicit equivS: Equiv[Stamp]): URL => Boolean =
+  def externalBinaryModified(entry: String => Option[URL], analysis: File => Option[Analysis], previous: Stamps, current: ReadStamps)(implicit equivS: Equiv[Stamp]): URL => Boolean =
     dependsOn =>
       {
         def inv(reason: String): Boolean = {
@@ -301,17 +301,16 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
             }
           }
 
-        analysis(dependsOn).isEmpty &&
+        analysis(IO.asFile(dependsOn)).isEmpty &&
           (if (skipClasspathLookup) urlModified(dependsOn, dependsOn) else dependencyModified(dependsOn))
-
       }
 
-  def currentExternalAPI(entry: String => Option[URL], forEntry: URL => Option[Analysis]): String => Source =
+  def currentExternalAPI(entry: String => Option[URL], forEntry: File => Option[Analysis]): String => Source =
     className =>
       orEmpty(
         for {
           e <- entry(className)
-          analysis <- forEntry(e)
+          analysis <- forEntry(IO.asFile(e))
           src <- analysis.relations.definesClass(className).headOption
         } yield analysis.apis.internalAPI(src)
       )
