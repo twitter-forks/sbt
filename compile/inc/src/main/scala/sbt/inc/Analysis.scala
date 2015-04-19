@@ -53,7 +53,7 @@ trait Analysis {
     compilations: Compilations = compilations): Analysis
 
   def addSource(src: File, api: Source, stamp: Stamp, directInternal: Iterable[File], inheritedInternal: Iterable[File], info: SourceInfo): Analysis
-  def addBinaryDep(src: File, dep: File, className: String, stamp: Stamp): Analysis
+  def addBinaryDep(src: File, dep: URL, className: String, stamp: Stamp): Analysis
   def addExternalDep(src: File, dep: String, api: Source, inherited: Boolean): Analysis
   def addProduct(src: File, product: URL, stamp: Stamp, name: String): Analysis
 
@@ -159,7 +159,7 @@ private class MAnalysis(val stamps: Stamps, val apis: APIs, val relations: Relat
   def addSource(src: File, api: Source, stamp: Stamp, directInternal: Iterable[File], inheritedInternal: Iterable[File], info: SourceInfo): Analysis =
     copy(stamps.markInternalSource(src, stamp), apis.markInternalSource(src, api), relations.addInternalSrcDeps(src, directInternal, inheritedInternal), infos.add(src, info))
 
-  def addBinaryDep(src: File, dep: File, className: String, stamp: Stamp): Analysis =
+  def addBinaryDep(src: File, dep: URL, className: String, stamp: Stamp): Analysis =
     copy(stamps.markBinary(dep, className, stamp), apis, relations.addBinaryDep(src, dep), infos)
 
   def addExternalDep(src: File, dep: String, depAPI: Source, inherited: Boolean): Analysis =

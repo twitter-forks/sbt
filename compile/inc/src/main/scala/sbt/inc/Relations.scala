@@ -25,7 +25,7 @@ trait Relations {
   def allProducts: collection.Set[URL]
 
   /** All files that are recorded as a binary dependency of a source file.*/
-  def allBinaryDeps: collection.Set[File]
+  def allBinaryDeps: collection.Set[URL]
 
   /** All files in this compilation group (project) that are recorded as a source dependency of a source file in this group.*/
   def allInternalSrcDeps: collection.Set[File]
@@ -42,12 +42,12 @@ trait Relations {
   /** The classes that were generated for source file `src`. */
   def products(src: File): Set[File]
   /** The source files that generated class file `prod`.  This is typically a set containing a single file. */
-  def produced(prod: File): Set[File]
+  def produced(prod: URL): Set[File]
 
   /** The binary dependencies for the source file `src`. */
-  def binaryDeps(src: File): Set[File]
+  def binaryDeps(src: File): Set[URL]
   /** The source files that depend on binary file `dep`. */
-  def usesBinary(dep: File): Set[File]
+  def usesBinary(dep: URL): Set[File]
 
   /** Internal source dependencies for `src`.  This includes both direct and inherited dependencies.  */
   def internalSrcDeps(src: File): Set[File]
@@ -72,7 +72,7 @@ trait Relations {
   def addExternalDep(src: File, dependsOn: String, inherited: Boolean): Relations
 
   /** Records internal source file `src` depending on a dependency binary dependency `dependsOn`.*/
-  def addBinaryDep(src: File, dependsOn: File): Relations
+  def addBinaryDep(src: File, dependsOn: URL): Relations
 
   /**
    * Records internal source file `src` as having direct dependencies on internal source files `directDependsOn`
@@ -96,7 +96,7 @@ trait Relations {
   def srcProd: Relation[File, URL]
 
   /** The dependency relation between internal sources and binaries. */
-  def binaryDep: Relation[File, File]
+  def binaryDep: Relation[File, URL]
 
   /** The dependency relation between internal sources.  This includes both direct and inherited dependencies.*/
   def internalSrcDep: Relation[File, File]
@@ -215,7 +215,7 @@ object Relations {
     relations match {
       case p :: bin :: di :: de :: pii :: pie :: mri :: mre :: ii :: ie :: cn :: un :: Nil =>
         val srcProd = p.asInstanceOf[Relation[File, URL]]
-        val binaryDep = bin.asInstanceOf[Relation[File, File]]
+        val binaryDep = bin.asInstanceOf[Relation[File, URL]]
         val directSrcDeps = makeSource(di.asInstanceOf[Relation[File, File]], de.asInstanceOf[Relation[File, String]])
         val publicInheritedSrcDeps = makeSource(pii.asInstanceOf[Relation[File, File]], pie.asInstanceOf[Relation[File, String]])
         val memberRefSrcDeps = makeSourceDependencies(mri.asInstanceOf[Relation[File, File]], mre.asInstanceOf[Relation[File, String]])
@@ -280,24 +280,24 @@ object Relations {
 
   private[sbt] def getOrEmpty[A, B, K](m: Map[K, Relation[A, B]], k: K): Relation[A, B] = m.getOrElse(k, Relation.empty)
 
-  private[this] lazy val e = Relation.empty[File, File]
-  private[this] lazy val eu = Relation.empty[File, URL]
+  private[this] lazy val e = Relation.empty[File, URL]
+  private[this] lazy val ef = Relation.empty[File, File]
   private[this] lazy val estr = Relation.empty[File, String]
-  private[this] lazy val es = new Source(e, estr)
+  private[this] lazy val es = new Source(ef, estr)
 
   def emptySource: Source = es
-  private[inc] lazy val emptySourceDependencies: SourceDependencies = new SourceDependencies(e, estr)
+  private[inc] lazy val emptySourceDependencies: SourceDependencies = new SourceDependencies(ef, estr)
   def empty: Relations = empty(nameHashing = IncOptions.nameHashingDefault)
   private[inc] def empty(nameHashing: Boolean): Relations =
     if (nameHashing)
-      new MRelationsNameHashing(eu, e, emptySourceDependencies, emptySourceDependencies, estr, estr)
+      new MRelationsNameHashing(e, e, emptySourceDependencies, emptySourceDependencies, estr, estr)
     else
-      new MRelationsDefaultImpl(eu, e, es, es, estr)
+      new MRelationsDefaultImpl(e, e, es, es, estr)
 
-  def make(srcProd: Relation[File, URL], binaryDep: Relation[File, File], direct: Source, publicInherited: Source, classes: Relation[File, String]): Relations =
+  def make(srcProd: Relation[File, URL], binaryDep: Relation[File, URL], direct: Source, publicInherited: Source, classes: Relation[File, String]): Relations =
     new MRelationsDefaultImpl(srcProd, binaryDep, direct = direct, publicInherited = publicInherited, classes)
 
-  private[inc] def make(srcProd: Relation[File, URL], binaryDep: Relation[File, File],
+  private[inc] def make(srcProd: Relation[File, URL], binaryDep: Relation[File, URL],
     memberRef: SourceDependencies, inheritance: SourceDependencies, classes: Relation[File, String],
     names: Relation[File, String]): Relations =
     new MRelationsNameHashing(srcProd, binaryDep, memberRef = memberRef, inheritance = inheritance,
@@ -326,12 +326,12 @@ object Relations {
  *
  * `classes` is a relation between a source file and its generated fully-qualified class names.
  */
-private abstract class MRelationsCommon(val srcProd: Relation[File, URL], val binaryDep: Relation[File, File],
+private abstract class MRelationsCommon(val srcProd: Relation[File, URL], val binaryDep: Relation[File, URL],
     val classes: Relation[File, String]) extends Relations {
   def allSources: collection.Set[File] = srcProd._1s
 
   def allProducts: collection.Set[URL] = srcProd._2s
-  def allBinaryDeps: collection.Set[File] = binaryDep._2s
+  def allBinaryDeps: collection.Set[URL] = binaryDep._2s
   def allInternalSrcDeps: collection.Set[File] = internalSrcDep._2s
   def allExternalDeps: collection.Set[String] = externalDep._2s
 
@@ -341,8 +341,8 @@ private abstract class MRelationsCommon(val srcProd: Relation[File, URL], val bi
   def products(src: File): Set[URL] = srcProd.forward(src)
   def produced(prod: URL): Set[File] = srcProd.reverse(prod)
 
-  def binaryDeps(src: File): Set[File] = binaryDep.forward(src)
-  def usesBinary(dep: File): Set[File] = binaryDep.reverse(dep)
+  def binaryDeps(src: File): Set[URL] = binaryDep.forward(src)
+  def usesBinary(dep: URL): Set[File] = binaryDep.reverse(dep)
 
   def internalSrcDeps(src: File): Set[File] = internalSrcDep.forward(src)
   def usesInternalSrc(dep: File): Set[File] = internalSrcDep.reverse(dep)
@@ -374,7 +374,7 @@ private abstract class MRelationsCommon(val srcProd: Relation[File, URL], val bi
  *    introduced by inheritance.
  *
  */
-private class MRelationsDefaultImpl(srcProd: Relation[File, URL], binaryDep: Relation[File, File],
+private class MRelationsDefaultImpl(srcProd: Relation[File, URL], binaryDep: Relation[File, URL],
     // direct should include everything in inherited
     val direct: Source, val publicInherited: Source,
     classes: Relation[File, String]) extends MRelationsCommon(srcProd, binaryDep, classes) {
@@ -415,7 +415,7 @@ private class MRelationsDefaultImpl(srcProd: Relation[File, URL], binaryDep: Rel
     throw new UnsupportedOperationException("Tracking of used names is not supported " +
       "when `nameHashing` is disabled.")
 
-  def addBinaryDep(src: File, dependsOn: File): Relations =
+  def addBinaryDep(src: File, dependsOn: URL): Relations =
     new MRelationsDefaultImpl(srcProd, binaryDep + (src, dependsOn), direct = direct,
       publicInherited = publicInherited, classes)
 
@@ -434,7 +434,7 @@ private class MRelationsDefaultImpl(srcProd: Relation[File, URL], binaryDep: Rel
   def groupBy[K](f: File => K): Map[K, Relations] =
     {
       type MapRel[T] = Map[K, Relation[File, T]]
-      def outerJoin(srcProdMap: MapRel[URL], binaryDepMap: MapRel[File], direct: Map[K, Source],
+      def outerJoin(srcProdMap: MapRel[URL], binaryDepMap: MapRel[URL], direct: Map[K, Source],
         inherited: Map[K, Source], classesMap: MapRel[String],
         namesMap: MapRel[String]): Map[K, Relations] =
         {
@@ -499,7 +499,7 @@ private class MRelationsDefaultImpl(srcProd: Relation[File, URL], binaryDep: Rel
  * dependencies. Therefore this class implements the new (compared to sbt 0.13.0) dependency tracking logic
  * needed by the name hashing invalidation algorithm.
  */
-private class MRelationsNameHashing(srcProd: Relation[File, URL], binaryDep: Relation[File, File],
+private class MRelationsNameHashing(srcProd: Relation[File, URL], binaryDep: Relation[File, URL],
     // memberRef should include everything in inherited
     val memberRef: SourceDependencies, val inheritance: SourceDependencies,
     classes: Relation[File, String],
@@ -538,7 +538,7 @@ private class MRelationsNameHashing(srcProd: Relation[File, URL], binaryDep: Rel
     new MRelationsNameHashing(srcProd, binaryDep, memberRef = memberRef,
       inheritance = inheritance, classes, names = names + (src, name))
 
-  def addBinaryDep(src: File, dependsOn: File): Relations =
+  def addBinaryDep(src: File, dependsOn: URL): Relations =
     new MRelationsNameHashing(srcProd, binaryDep + (src, dependsOn), memberRef = memberRef,
       inheritance = inheritance, classes, names = names)
 

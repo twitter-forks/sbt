@@ -2,6 +2,7 @@ package sbt.inc
 
 import sbt.IO
 import java.io.File
+import java.net.URL
 import collection.mutable
 
 /**
@@ -17,7 +18,7 @@ trait ClassfileManager {
   def delete(classes: Iterable[File]): Unit
 
   /** Called once per compilation step with the class files generated during that step.*/
-  def generated(classes: Iterable[File]): Unit
+  def generated(classes: Iterable[URL]): Unit
 
   /** Called once at the end of the whole compilation run, with `success` indicating whether compilation succeeded (true) or not (false).*/
   def complete(success: Boolean): Unit
@@ -27,7 +28,7 @@ object ClassfileManager {
   /** Constructs a minimal ClassfileManager implementation that immediately deletes class files when requested. */
   val deleteImmediately: () => ClassfileManager = () => new ClassfileManager {
     def delete(classes: Iterable[File]): Unit = IO.deleteFilesEmptyDirs(classes)
-    def generated(classes: Iterable[File]) {}
+    def generated(classes: Iterable[URL]) {}
     def complete(success: Boolean) {}
   }
   @deprecated("Use overloaded variant that takes additional logger argument, instead.", "0.13.5")
@@ -40,29 +41,29 @@ object ClassfileManager {
     IO.createDirectory(tempDir)
     logger.debug(s"Created transactional ClassfileManager with tempDir = $tempDir")
 
-    private[this] val generatedClasses = new mutable.HashSet[File]
+    private[this] val generatedClasses = new mutable.HashSet[URL]
     private[this] val movedClasses = new mutable.HashMap[File, File]
 
-    private def showFiles(files: Iterable[File]): String = files.map(f => s"\t$f").mkString("\n")
-    def delete(classes: Iterable[File]) {
-      logger.debug(s"About to delete class files:\n${showFiles(classes)}")
+    private def showEntries[E](entries: Iterable[E]): String = entries.map(f => s"\t$f").mkString("\n")
+    def delete(classes: Iterable[URL]) {
+      logger.debug(s"About to delete class files:\n${showEntries(classes)}")
       val toBeBackedUp = classes.filter(c => c.exists && !movedClasses.contains(c) && !generatedClasses(c))
-      logger.debug(s"We backup classs files:\n${showFiles(toBeBackedUp)}")
+      logger.debug(s"We backup classs files:\n${showEntries(toBeBackedUp)}")
       for (c <- toBeBackedUp) {
         movedClasses.put(c, move(c))
       }
       IO.deleteFilesEmptyDirs(classes)
     }
-    def generated(classes: Iterable[File]): Unit = {
-      logger.debug(s"Registering generated classes:\n${showFiles(classes)}")
+    def generated(classes: Iterable[URL]): Unit = {
+      logger.debug(s"Registering generated classes:\n${showEntries(classes)}")
       generatedClasses ++= classes
     }
     def complete(success: Boolean) {
       if (!success) {
         logger.debug("Rolling back changes to class files.")
-        logger.debug(s"Removing generated classes:\n${showFiles(generatedClasses)}")
+        logger.debug(s"Removing generated classes:\n${showEntries(generatedClasses)}")
         IO.deleteFilesEmptyDirs(generatedClasses)
-        logger.debug(s"Restoring class files: \n${showFiles(movedClasses.map(_._1))}")
+        logger.debug(s"Restoring class files: \n${showEntries(movedClasses.map(_._1))}")
         for ((orig, tmp) <- movedClasses) IO.move(tmp, orig)
       }
       logger.debug(s"Removing the temporary directory used for backing up class files: $tempDir")

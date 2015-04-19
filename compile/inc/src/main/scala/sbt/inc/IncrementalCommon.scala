@@ -5,6 +5,7 @@ import scala.annotation.tailrec
 import xsbti.compile.DependencyChanges
 import xsbti.api.{ Compilation, Source }
 import java.io.File
+import java.net.URL
 
 private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) {
 
@@ -124,8 +125,8 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
     case (co1, co2) => co1.sourceDirectory == co2.sourceDirectory && co1.outputLocation == co2.outputLocation
   }
 
-  def changedInitial(entry: String => Option[File], sources: Set[File], previousAnalysis: Analysis, current: ReadStamps,
-    forEntry: File => Option[Analysis])(implicit equivS: Equiv[Stamp]): InitialChanges =
+  def changedInitial(entry: String => Option[URL], sources: Set[File], previousAnalysis: Analysis, current: ReadStamps,
+    forEntry: URL => Option[Analysis])(implicit equivS: Equiv[Stamp]): InitialChanges =
     {
       val previous = previousAnalysis.stamps
       val previousAPIs = previousAnalysis.apis
@@ -267,22 +268,21 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       newInv ++ initialDependsOnNew
     }
 
-  def externalBinaryModified(entry: String => Option[File], analysis: File => Option[Analysis], previous: Stamps, current: ReadStamps)(implicit equivS: Equiv[Stamp]): File => Boolean =
+  def externalBinaryModified(entry: String => Option[URL], analysis: URL => Option[Analysis], previous: Stamps, current: ReadStamps)(implicit equivS: Equiv[Stamp]): URL => Boolean =
     dependsOn =>
       {
         def inv(reason: String): Boolean = {
           log.debug("Invalidating " + dependsOn + ": " + reason)
           true
         }
-        def entryModified(className: String, classpathEntry: File): Boolean =
+        def entryModified(className: String, classpathEntry: URL): Boolean =
           {
-            val resolved = Locate.resolve(classpathEntry, className)
-            if (resolved.getCanonicalPath != dependsOn.getCanonicalPath)
-              inv("class " + className + " now provided by " + resolved.getCanonicalPath)
+            if (classpathEntry != dependsOn)
+              inv("class " + className + " now provided by " + classpathEntry)
             else
-              fileModified(dependsOn, resolved)
+              urlModified(dependsOn, classpathEntry)
           }
-        def fileModified(previousFile: File, currentFile: File): Boolean =
+        def urlModified(previousFile: URL, currentFile: URL): Boolean =
           {
             val previousStamp = previous.binary(previousFile)
             val currentStamp = current.binary(currentFile)
@@ -291,7 +291,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
             else
               inv("stamp changed from " + previousStamp + " to " + currentStamp)
           }
-        def dependencyModified(file: File): Boolean =
+        def dependencyModified(file: URL): Boolean =
           previous.className(file) match {
             case None => inv("no class name was mapped for it.")
             case Some(name) => entry(name) match {
@@ -301,11 +301,11 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
           }
 
         analysis(dependsOn).isEmpty &&
-          (if (skipClasspathLookup) fileModified(dependsOn, dependsOn) else dependencyModified(dependsOn))
+          (if (skipClasspathLookup) urlModified(dependsOn, dependsOn) else dependencyModified(dependsOn))
 
       }
 
-  def currentExternalAPI(entry: String => Option[File], forEntry: File => Option[Analysis]): String => Source =
+  def currentExternalAPI(entry: String => Option[URL], forEntry: URL => Option[Analysis]): String => Source =
     className =>
       orEmpty(
         for {

@@ -9,13 +9,15 @@ import annotation.tailrec
 import xsbti.api.{ Compilation, Source }
 import xsbti.compile.DependencyChanges
 import java.io.File
+import java.net.URL
 
 object Incremental {
   def compile(sources: Set[File],
-    entry: String => Option[File],
+    // TODO: unsure.
+    entry: String => Option[URL],
     previous: Analysis,
     current: ReadStamps,
-    forEntry: File => Option[Analysis],
+    forEntry: URL => Option[Analysis],
     doCompile: (Set[File], DependencyChanges) => Analysis,
     log: Logger,
     options: IncOptions)(implicit equivS: Equiv[Stamp]): (Boolean, Analysis) =

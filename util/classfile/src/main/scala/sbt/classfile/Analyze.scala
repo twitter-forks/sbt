@@ -32,7 +32,8 @@ private[sbt] object Analyze {
       sourceFile <- classFile.sourceFile orElse guessSourceName(newClass.getName);
       source <- guessSourcePath(sourceMap, classFile, log)
     ) {
-      analysis.generatedClass(source, newClass, classFile.className)
+      // FIXME: XXX: will need to support jar outputs here.
+      analysis.generatedClass(source, newClass.toURI.toURL, classFile.className)
       productToSource(newClass) = source
       sourceToClassFiles.getOrElseUpdate(source, new ArrayBuffer[ClassFile]) += classFile
     }

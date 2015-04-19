@@ -40,7 +40,6 @@ object Locate {
       val entries = classpath.toStream.map { entry => (entry, f(entry)) }
       className => entries collect { case (entry, defines) if defines(className) => entry } headOption;
     }
-  def resolve(f: File, className: String): File = if (f.isDirectory) classFile(f, className) else f
 
   def getValue[S](get: File => String => Option[S])(entry: File): String => Either[Boolean, S] =
     {

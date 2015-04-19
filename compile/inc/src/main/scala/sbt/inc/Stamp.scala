@@ -15,27 +15,27 @@ trait ReadStamps {
   /** The Stamp for the given source file at the time represented by this Stamps instance.*/
   def internalSource(src: File): Stamp
   /** The Stamp for the given binary dependency at the time represented by this Stamps instance.*/
-  def binary(bin: File): Stamp
+  def binary(bin: URL): Stamp
 }
 
 /** Provides information about files as they were at a specific time.*/
 trait Stamps extends ReadStamps {
   def allInternalSources: collection.Set[File]
-  def allBinaries: collection.Set[File]
-  def allProducts: collection.Set[File]
+  def allBinaries: collection.Set[URL]
+  def allProducts: collection.Set[URL]
 
   def sources: Map[File, Stamp]
-  def binaries: Map[File, Stamp]
+  def binaries: Map[URL, Stamp]
   def products: Map[URL, Stamp]
-  def classNames: Map[File, String]
+  def classNames: Map[URL, String]
 
-  def className(bin: File): Option[String]
+  def className(bin: URL): Option[String]
 
   def markInternalSource(src: File, s: Stamp): Stamps
-  def markBinary(bin: File, className: String, s: Stamp): Stamps
+  def markBinary(bin: URL, className: String, s: Stamp): Stamps
   def markProduct(prod: URL, s: Stamp): Stamps
 
-  def filter(prod: File => Boolean, removeSources: Iterable[File], bin: File => Boolean): Stamps
+  def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: URL => Boolean): Stamps
 
   def ++(o: Stamps): Stamps
   def groupBy[K](prod: Map[K, File => Boolean], sourcesGrouping: File => K, bin: Map[K, File => Boolean]): Map[K, Stamps]
@@ -129,19 +129,19 @@ object Stamps {
    * stamp is calculated separately on demand.
    * The stamp for a product is always recalculated.
    */
-  def initial(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: File => Stamp): ReadStamps = new InitialStamps(prodStamp, srcStamp, binStamp)
+  def initial(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: URL => Stamp): ReadStamps = new InitialStamps(prodStamp, srcStamp, binStamp)
 
   val empty: Stamps = apply(Map.empty, Map.empty, Map.empty, Map.empty)
 
-  def apply(products: Map[URL, Stamp], sources: Map[File, Stamp], binaries: Map[File, Stamp], binaryClassNames: Map[File, String]): Stamps =
+  def apply(products: Map[URL, Stamp], sources: Map[File, Stamp], binaries: Map[URL, Stamp], binaryClassNames: Map[URL, String]): Stamps =
     new MStamps(products, sources, binaries, binaryClassNames)
 
   def merge(stamps: Traversable[Stamps]): Stamps = (Stamps.empty /: stamps)(_ ++ _)
 }
 
-private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stamp], val binaries: Map[File, Stamp], val classNames: Map[File, String]) extends Stamps {
+private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stamp], val binaries: Map[URL, Stamp], val classNames: Map[URL, String]) extends Stamps {
   def allInternalSources: collection.Set[File] = sources.keySet
-  def allBinaries: collection.Set[File] = binaries.keySet
+  def allBinaries: collection.Set[URL] = binaries.keySet
   def allProducts: collection.Set[URL] = products.keySet
 
   def ++(o: Stamps): Stamps =
@@ -150,16 +150,16 @@ private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stam
   def markInternalSource(src: File, s: Stamp): Stamps =
     new MStamps(products, sources.updated(src, s), binaries, classNames)
 
-  def markBinary(bin: File, className: String, s: Stamp): Stamps =
+  def markBinary(bin: URL, className: String, s: Stamp): Stamps =
     new MStamps(products, sources, binaries.updated(bin, s), classNames.updated(bin, className))
 
   def markProduct(prod: URL, s: Stamp): Stamps =
     new MStamps(products.updated(prod, s), sources, binaries, classNames)
 
-  def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: File => Boolean): Stamps =
+  def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: URL => Boolean): Stamps =
     new MStamps(products.filterKeys(prod), sources -- removeSources, binaries.filterKeys(bin), classNames.filterKeys(bin))
 
-  def groupBy[K](prod: Map[K, URL => Boolean], f: File => K, bin: Map[K, File => Boolean]): Map[K, Stamps] =
+  def groupBy[K](prod: Map[K, URL => Boolean], f: File => K, bin: Map[K, URL => Boolean]): Map[K, Stamps] =
     {
       val sourcesMap: Map[K, Map[File, Stamp]] = sources.groupBy(x => f(x._1))
 
@@ -176,8 +176,8 @@ private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stam
 
   def product(prod: URL) = getStamp(products, prod)
   def internalSource(src: File) = getStamp(sources, src)
-  def binary(bin: File) = getStamp(binaries, bin)
-  def className(bin: File) = classNames get bin
+  def binary(bin: URL) = getStamp(binaries, bin)
+  def className(bin: URL) = classNames get bin
 
   override def equals(other: Any): Boolean = other match {
     case o: MStamps => products == o.products && sources == o.sources && binaries == o.binaries && classNames == o.classNames
@@ -190,13 +190,13 @@ private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stam
     "Stamps for: %d products, %d sources, %d binaries, %d classNames".format(products.size, sources.size, binaries.size, classNames.size)
 }
 
-private class InitialStamps(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: File => Stamp) extends ReadStamps {
+private class InitialStamps(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: URL => Stamp) extends ReadStamps {
   import collection.mutable.{ HashMap, Map }
   // cached stamps for files that do not change during compilation
   private val sources: Map[File, Stamp] = new HashMap
-  private val binaries: Map[File, Stamp] = new HashMap
+  private val binaries: Map[URL, Stamp] = new HashMap
 
   def product(prod: URL): Stamp = prodStamp(prod)
   def internalSource(src: File): Stamp = synchronized { sources.getOrElseUpdate(src, srcStamp(src)) }
-  def binary(bin: File): Stamp = synchronized { binaries.getOrElseUpdate(bin, binStamp(bin)) }
+  def binary(bin: URL): Stamp = synchronized { binaries.getOrElseUpdate(bin, binStamp(bin)) }
 }
