@@ -102,11 +102,9 @@ object Stamp {
     val lastModified =
       u.getProtocol match {
         case "jar" =>
-          // does not create an input stream
           u.openConnection.getLastModified
         case "file" =>
-          // ugh. custom class rather than URL?
-          new File(u.getFile.substring("file:".length)).lastModified
+          IO.toFile(u).lastModified
         case prot =>
           throw new AssertionError("Protocol ${prot} not supported for last modified time lookups.")
       }
