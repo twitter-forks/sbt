@@ -84,16 +84,16 @@ abstract class LocateClassFile extends Compat {
     def getOutputClassURLForFilename(filename: String): Option[URL] =
       outputJarContents.collect {
         // scan jars first since they're indexed
-        case (jarURL, classFiles) if classFiles(filename) => jarURL
-      }.headOption.map { jarURL =>
-        new URL(jarURL + "!/" + filename)
+        case (jarFile, classFiles) if classFiles(filename) => jarFile
+      }.headOption.map { jarFile =>
+        new URL("jar:file:" + jarFile + "!/" + filename)
       }.orElse {
         // scan directories
         outputDirectories.map(new File(_, filename)).find(_.exists()).map(_.toURL)
       }
 
     /** @return An index of output jar Files to the filenames they contain. */
-    private[this] val outputJarContents: Map[URL, Set[String]] =
+    private[this] val outputJarContents: Map[File, Set[String]] =
       outputJars.flatMap { jol =>
         // TODO: from sbt.inc.Locate
         val jarOpt =
@@ -107,8 +107,8 @@ abstract class LocateClassFile extends Compat {
           }
         jarOpt.map { jar =>
           try {
-            val fileEntries = (jar.entries.asScala: Iterator[ZipEntry]).filterNot(_.isDirectory)
-            jol.file.toURI.toURL -> fileEntries.map(_.getName).toSet
+            def fileEntries = (jar.entries.asScala: Iterator[ZipEntry]).filterNot(_.isDirectory)
+            jol.file -> fileEntries.map(_.getName).toSet
           } finally {
             jar.close()
           }
