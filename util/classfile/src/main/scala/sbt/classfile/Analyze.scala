@@ -33,7 +33,8 @@ private[sbt] object Analyze {
       source <- guessSourcePath(sourceMap, classFile, log)
     ) {
       // FIXME: XXX: will need to support jar outputs here.
-      analysis.generatedClass(source, newClass.toURI.toURL, classFile.className)
+      // analysis.generatedClass(source, newClass, classFile.className)
+      assert(false, "Analysis generation is disabled for Java!")
       productToSource(newClass) = source
       sourceToClassFiles.getOrElseUpdate(source, new ArrayBuffer[ClassFile]) += classFile
     }
@@ -48,13 +49,15 @@ private[sbt] object Analyze {
             if (url.getProtocol == "jar") {
               // FIXME: XXX: re-enable for java
               // analysis.binaryDependency(file, tpe, source, inherited)
+              assert(false, "Analysis generation is disabled for Java!")
             } else {
               assume(url.getProtocol == " file")
               productToSource.get(file) match {
                 case Some(dependsOn) => analysis.sourceDependency(dependsOn, source, inherited)
-                case None            =>
-                // FIXME: XXX: re-enable for java
-                // analysis.binaryDependency(file, tpe, source, inherited)
+                case None =>
+                  // FIXME: XXX: re-enable for java
+                  // analysis.binaryDependency(file, tpe, source, inherited)
+                  assert(false, "Analysis generation is disabled for Java!")
               }
             }
           }
