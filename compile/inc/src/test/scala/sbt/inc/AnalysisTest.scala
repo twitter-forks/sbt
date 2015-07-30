@@ -2,19 +2,21 @@ package sbt
 package inc
 
 import java.io.File
+import java.net.URL
 import scala.math.abs
 import sbt.inc.TestCaseGenerators._
 import org.scalacheck._
 import Gen._
 import Prop._
+import xsbti.DependencyContext._
 
 object AnalysisTest extends Properties("Analysis") {
   // Merge and split a hard-coded trivial example.
   property("Simple Merge and Split") = {
-    def f(s: String) = new File(s)
-    def u(s: String) = f(s).toURI.toURL
     val aScala = f("A.scala")
     val bScala = f("B.scala")
+    val xClass = u("x.jar", "x.class")
+    val yClass = u("y.jar", "y.class")
     val aSource = genSource("A" :: "A$" :: Nil).sample.get
     val bSource = genSource("B" :: "B$" :: Nil).sample.get
     val cSource = genSource("C" :: Nil).sample.get
@@ -22,34 +24,35 @@ object AnalysisTest extends Properties("Analysis") {
     val sourceInfos = SourceInfos.makeInfo(Nil, Nil)
 
     // a
-    var a = Analysis.empty(false)
-    a = a.addProduct(aScala, u("A.class"), exists, "A")
-    a = a.addProduct(aScala, u("A$.class"), exists, "A$")
-    a = a.addSource(aScala, aSource, exists, Nil, Nil, sourceInfos)
-    a = a.addBinaryDep(aScala, u("x.jar"), "x", exists)
-    a = a.addExternalDep(aScala, "C", cSource, inherited = false)
+    val aProducts = (u("A.class"), "A", exists) :: (u("A$.class"), "A$", exists) :: Nil
+    val aInternal = Nil
+    val aExternal = ExternalDependency(aScala, "C", cSource, DependencyByMemberRef) :: Nil
+    val aBinary = (xClass, "x", exists) :: Nil
+
+    val a = Analysis.empty(false).addSource(aScala, aSource, exists, sourceInfos, aProducts, aInternal, aExternal, aBinary)
 
     // b
-    var b = Analysis.empty(false)
-    b = b.addProduct(bScala, u("B.class"), exists, "B")
-    b = b.addProduct(bScala, u("B$.class"), exists, "B$")
-    b = b.addSource(bScala, bSource, exists, Nil, Nil, sourceInfos)
-    b = b.addBinaryDep(bScala, u("x.jar"), "x", exists)
-    b = b.addBinaryDep(bScala, u("y.jar"), "y", exists)
-    b = b.addExternalDep(bScala, "A", aSource, inherited = true)
+    val bProducts = (u("B.class"), "B", exists) :: (u("B$.class"), "B$", exists) :: Nil
+    val bInternal = Nil
+    val bExternal = ExternalDependency(bScala, "A", aSource, DependencyByInheritance) :: Nil
+    val bBinary = (xClass, "x", exists) :: (yClass, "y", exists) :: Nil
+
+    val b = Analysis.empty(false).addSource(bScala, bSource, exists, sourceInfos, bProducts, bInternal, bExternal, bBinary)
 
     // ab
-    var ab = Analysis.empty(false)
-    ab = ab.addProduct(aScala, u("A.class"), exists, "A")
-    ab = ab.addProduct(aScala, u("A$.class"), exists, "A$")
-    ab = ab.addProduct(bScala, u("B.class"), exists, "B")
-    ab = ab.addProduct(bScala, u("B$.class"), exists, "B$")
-    ab = ab.addSource(aScala, aSource, exists, Nil, Nil, sourceInfos)
-    ab = ab.addSource(bScala, bSource, exists, aScala :: Nil, aScala :: Nil, sourceInfos)
-    ab = ab.addBinaryDep(aScala, u("x.jar"), "x", exists)
-    ab = ab.addBinaryDep(bScala, u("x.jar"), "x", exists)
-    ab = ab.addBinaryDep(bScala, u("y.jar"), "y", exists)
-    ab = ab.addExternalDep(aScala, "C", cSource, inherited = false)
+    // `b` has an external dependency on `a` that will be internalized
+    val abAProducts = (u("A.class"), "A", exists) :: (u("A$.class"), "A$", exists) :: Nil
+    val abAInternal = Nil
+    val abAExternal = ExternalDependency(aScala, "C", cSource, DependencyByMemberRef) :: Nil
+    val abABinary = (xClass, "x", exists) :: Nil
+
+    val abBProducts = (u("B.class"), "B", exists) :: (u("B$.class"), "B$", exists) :: Nil
+    val abBInternal = InternalDependency(bScala, aScala, DependencyByMemberRef) :: InternalDependency(bScala, aScala, DependencyByInheritance) :: Nil
+    val abBExternal = Nil
+    val abBBinary = (xClass, "x", exists) :: (yClass, "y", exists) :: Nil
+
+    val ab = Analysis.empty(false).addSource(aScala, aSource, exists, sourceInfos, abAProducts, abAInternal, abAExternal, abABinary)
+      .addSource(bScala, bSource, exists, sourceInfos, abBProducts, abBInternal, abBExternal, abBBinary)
 
     val split: Map[String, Analysis] = ab.groupBy({ f: File => f.getName.substring(0, 1) })
 
@@ -86,4 +89,8 @@ object AnalysisTest extends Properties("Analysis") {
       s"RELATIONS EQUAL: ${left.relations == right.relations}" |:
       "UNEQUAL" |:
       (left == right)
+
+  def f(s: String) = new File(s)
+  def u(cls: String) = f(cls).toURI.toURL
+  def u(jar: String, cls: String) = new URL(s"jar:${f(jar).toURI.toURL}!/${cls}")
 }

@@ -11,8 +11,36 @@ import Logger.{ m2o, problem }
 import java.io.File
 import java.net.URL
 import xsbti.api.Definition
+import xsbti.DependencyContext
+import xsbti.DependencyContext.{ DependencyByInheritance, DependencyByMemberRef }
 
+/**
+ * Helper methods for running incremental compilation.  All this is responsible for is
+ * adapting any xsbti.AnalysisCallback into one compatible with the [[sbt.inc.Incremental]] class.
+ */
 object IncrementalCompile {
+  /**
+   * Runs the incremental compilation algorithm.
+   * @param sources
+   *              The full set of input sources
+   * @param entry
+   *              A className -> source file lookup function.
+   * @param compile
+   *                The mechanism to run a single 'step' of compile, for ALL source files involved.
+   * @param previous
+   *                 The previous dependency Analysis (or an empty one).
+   * @param forEntry
+   *                 The dependency Analysis associated with a given file
+   * @param output
+   *               The configured output directory/directory mapping for source files.
+   * @param log
+   *            Where all log messages should go
+   * @param options
+   *                Incremental compiler options (like name hashing vs. not).
+   * @return
+   *         A flag of whether or not compilation completed succesfully, and the resulting dependency analysis object.
+   *
+   */
   def apply(sources: Set[File], entry: String => Option[URL],
     compile: (Set[File], DependencyChanges, xsbti.AnalysisCallback) => Unit,
     previous: Analysis,
@@ -59,7 +87,7 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
     new Compilation(System.currentTimeMillis, outputSettings)
   }
 
-  override def toString = (List("APIs", "Binary deps", "Products", "Source deps") zip List(apis, binaryDeps, classes, sourceDeps)).map { case (label, map) => label + "\n\t" + map.mkString("\n\t") }.mkString("\n")
+  override def toString = (List("APIs", "Binary deps", "Products", "Source deps") zip List(apis, binaryDeps, classes, intSrcDeps)).map { case (label, map) => label + "\n\t" + map.mkString("\n\t") }.mkString("\n")
 
   import collection.mutable.{ HashMap, HashSet, ListBuffer, Map, Set }
 
@@ -73,14 +101,10 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
   private[this] val classes = new HashMap[File, Set[(URL, String)]]
   // generated class file to its source file
   private[this] val classToSource = new HashMap[URL, File]
-  // all internal source dependencies, including direct and inherited
-  private[this] val sourceDeps = new HashMap[File, Set[File]]
-  // inherited internal source dependencies
-  private[this] val inheritedSourceDeps = new HashMap[File, Set[File]]
-  // external source dependencies:
-  //   (internal source, external source depended on, API of external dependency, true if an inheritance dependency)
-  private[this] val extSrcDeps = new ListBuffer[(File, String, Source, Boolean)]
-  // TODO: tease apart why this split is necessary
+  // internal source dependencies
+  private[this] val intSrcDeps = new HashMap[File, Set[InternalDependency]]
+  // external source dependencies
+  private[this] val extSrcDeps = new HashMap[File, Set[ExternalDependency]]
   private[this] val binaryClassName = new HashMap[URL, String]
   // source files containing a macro def.
   private[this] val macroSources = Set[File]()
@@ -96,42 +120,57 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
       }
     }
 
+  def sourceDependency(dependsOn: File, source: File, context: DependencyContext) = {
+    add(intSrcDeps, source, InternalDependency(source, dependsOn, context))
+  }
+
+  @deprecated("Use `sourceDependency(File, File, DependencyContext)`.", "0.13.8")
   def sourceDependency(dependsOn: File, source: File, inherited: Boolean) =
     {
-      add(sourceDeps, source, dependsOn)
-      if (inherited) add(inheritedSourceDeps, source, dependsOn)
+      val context = if (inherited) DependencyByInheritance else DependencyByMemberRef
+      sourceDependency(dependsOn, source, context)
     }
-  def externalBinaryDependency(binary: URL, className: String, source: File, inherited: Boolean) {
+
+  private[this] def externalBinaryDependency(binary: URL, className: String, source: File, context: DependencyContext) = {
     binaryClassName.put(binary, className)
     add(binaryDeps, source, binary)
   }
-  def externalSourceDependency(t4: (File, String, Source, Boolean)) = extSrcDeps += t4
 
-  def binaryDependency(classFile: URL, name: String, source: File, inherited: Boolean) = {
+  private[this] def externalSourceDependency(sourceFile: File, dependsOn: String, source: Source, context: DependencyContext) = {
+    val dependency = ExternalDependency(sourceFile, dependsOn, source, context)
+    add(extSrcDeps, sourceFile, dependency)
+  }
+
+  def binaryDependency(classFile: URL, name: String, source: File, context: DependencyContext) =
     internalMap(classFile) match {
       case Some(dependsOn) =>
         // dependency is a product of a source not included in this compilation
-        sourceDependency(dependsOn, source, inherited)
+        sourceDependency(dependsOn, source, context)
       case None =>
         classToSource.get(classFile) match {
           case Some(dependsOn) =>
             // dependency is a product of a source in this compilation step,
             //  but not in the same compiler run (as in javac v. scalac)
-            sourceDependency(dependsOn, source, inherited)
+            sourceDependency(dependsOn, source, context)
           case None =>
-            externalDependency(classFile, name, source, inherited)
+            externalDependency(classFile, name, source, context)
         }
     }
+
+  @deprecated("Use `binaryDependency(File, String, File, DependencyContext)`.", "0.13.8")
+  def binaryDependency(classFile: URL, name: String, source: File, inherited: Boolean) = {
+    val context = if (inherited) DependencyByInheritance else DependencyByMemberRef
+    binaryDependency(classFile, name, source, context)
   }
 
-  private[this] def externalDependency(classFile: URL, name: String, source: File, inherited: Boolean): Unit =
+  private[this] def externalDependency(classFile: URL, name: String, source: File, context: DependencyContext): Unit =
     externalAPI(classFile, name) match {
       case Some(api) =>
         // dependency is a product of a source in another project
-        externalSourceDependency((source, name, api, inherited))
+        externalSourceDependency(source, name, api, context)
       case None =>
         // dependency is some other binary on the classpath
-        externalBinaryDependency(classFile, name, source, inherited)
+        externalBinaryDependency(classFile, name, source, context)
     }
 
   def generatedClass(source: File, module: URL, name: String) = {
@@ -160,10 +199,16 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
 
   def nameHashing: Boolean = options.nameHashing
 
-  def get: Analysis = addUsedNames(addCompilation(addExternals(addBinaries(addProducts(addSources(Analysis.empty(nameHashing = nameHashing)))))))
-  def addProducts(base: Analysis): Analysis = addAll(base, classes) { case (a, src, (prod, name)) => a.addProduct(src, prod, current product prod, name) }
-  def addBinaries(base: Analysis): Analysis = addAll(base, binaryDeps)((a, src, bin) => a.addBinaryDep(src, bin, binaryClassName(bin), current binary bin))
-  def addSources(base: Analysis): Analysis =
+  def get: Analysis = addUsedNames(addCompilation(addProductsAndDeps(Analysis.empty(nameHashing = nameHashing))))
+
+  def getOrNil[A, B](m: collection.Map[A, Seq[B]], a: A): Seq[B] = m.get(a).toList.flatten
+  def addCompilation(base: Analysis): Analysis = base.copy(compilations = base.compilations.add(compilation))
+  def addUsedNames(base: Analysis): Analysis = (base /: usedNames) {
+    case (a, (src, names)) =>
+      (a /: names) { case (a, name) => a.copy(relations = a.relations.addUsedName(src, name)) }
+  }
+
+  def addProductsAndDeps(base: Analysis): Analysis =
     (base /: apis) {
       case (a, (src, api)) =>
         val stamp = current.internalSource(src)
@@ -172,23 +217,15 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
         val hasMacro: Boolean = macroSources.contains(src)
         val s = new xsbti.api.Source(compilation, hash, api._2, api._1, publicNameHashes(src), hasMacro)
         val info = SourceInfos.makeInfo(getOrNil(reporteds, src), getOrNil(unreporteds, src))
-        val direct = sourceDeps.getOrElse(src, Nil: Iterable[File])
-        val publicInherited = inheritedSourceDeps.getOrElse(src, Nil: Iterable[File])
-        a.addSource(src, s, stamp, direct, publicInherited, info)
-    }
-  def getOrNil[A, B](m: collection.Map[A, Seq[B]], a: A): Seq[B] = m.get(a).toList.flatten
-  def addExternals(base: Analysis): Analysis = (base /: extSrcDeps) { case (a, (source, name, api, inherited)) => a.addExternalDep(source, name, api, inherited) }
-  def addCompilation(base: Analysis): Analysis = base.copy(compilations = base.compilations.add(compilation))
-  def addUsedNames(base: Analysis): Analysis = (base /: usedNames) {
-    case (a, (src, names)) =>
-      (a /: names) { case (a, name) => a.copy(relations = a.relations.addUsedName(src, name)) }
-  }
+        val binaries: Iterable[URL] = binaryDeps.getOrElse(src, Nil)
+        val prods: Iterable[(URL, String)] = classes.getOrElse(src, Nil)
 
-  def addAll[A, B](base: Analysis, m: Map[A, Set[B]])(f: (Analysis, A, B) => Analysis): Analysis =
-    (base /: m) {
-      case (outer, (a, bs)) =>
-        (outer /: bs) { (inner, b) =>
-          f(inner, a, b)
-        }
+        val products = prods.map { case (prod, name) => (prod, name, current product prod) }
+        val internalDeps = intSrcDeps.getOrElse(src, Set.empty)
+        val externalDeps = extSrcDeps.getOrElse(src, Set.empty)
+        val binDeps = binaries.map(d => (d, binaryClassName(d), current binary d))
+
+        a.addSource(src, s, stamp, info, products, internalDeps, externalDeps, binDeps)
+
     }
 }

@@ -121,7 +121,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
 
   protected def sameAPI[T](src: T, a: Source, b: Source): Option[APIChange[T]]
 
-  def shortcutSameSource(a: Source, b: Source): Boolean = !a.hash.isEmpty && !b.hash.isEmpty && sameCompilation(a.compilation, b.compilation) && (a.hash.deep equals b.hash.deep)
+  def shortcutSameSource(a: Source, b: Source): Boolean = a.hash.nonEmpty && b.hash.nonEmpty && sameCompilation(a.compilation, b.compilation) && (a.hash.deep equals b.hash.deep)
   def sameCompilation(a: Compilation, b: Compilation): Boolean = a.startTime == b.startTime && a.outputs.corresponds(b.outputs) {
     case (co1, co2) => co1.sourceDirectory == co2.sourceDirectory && co1.outputLocation == co2.outputLocation
   }
@@ -198,7 +198,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       checkAbsolute(srcChanges.added.toList)
       log.debug(
         "\nInitial source changes: \n\tremoved:" + srcChanges.removed + "\n\tadded: " + srcChanges.added + "\n\tmodified: " + srcChanges.changed +
-          "\nRemoved products: " + changes.removedProducts +
+          "\nInvalidated products: " + changes.removedProducts +
           "\nExternal API changes: " + changes.external +
           "\nModified binary dependencies: " + changes.binaryDeps +
           "\nInitial directly invalidated sources: " + srcDirect +

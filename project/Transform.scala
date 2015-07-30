@@ -18,7 +18,7 @@ object Transform {
 
   def conscriptSettings(launch: Reference) = Seq(
     conscriptConfigs <<= (managedResources in launch in Compile, sourceDirectory in Compile).map { (res, src) =>
-      val source = res.filter(_.getName == "sbt.boot.properties").headOption getOrElse sys.error("No managed boot.properties file.")
+      val source = res.find(_.getName == "sbt.boot.properties") getOrElse sys.error("No managed boot.properties file.")
       copyConscriptProperties(source, src / "conscript")
       ()
     }
@@ -42,11 +42,11 @@ object Transform {
     IO.writeLines(target, IO.readLines(source) map subMain)
   }
 
-  def crossGenSettings = transSourceSettings ++ seq(
+  def crossGenSettings = transSourceSettings ++ Seq(
     sourceProperties := Map("cross.package0" -> "sbt", "cross.package1" -> "cross")
   )
-  def transSourceSettings = seq(
-    inputSourceDirectory <<= sourceDirectory / "input_sources",
+  def transSourceSettings = Seq(
+    inputSourceDirectory := sourceDirectory.value / "input_sources",
     inputSourceDirectories <<= Seq(inputSourceDirectory).join,
     inputSources <<= inputSourceDirectories.map(dirs => (dirs ** (-DirectoryFilter)).get),
     fileMappings in transformSources <<= transformSourceMappings,
@@ -56,15 +56,15 @@ object Transform {
     sourceGenerators <+= transformSources
   )
   def transformSourceMappings = (inputSources, inputSourceDirectories, sourceManaged) map { (ss, sdirs, sm) =>
-    (ss --- sdirs) x (rebase(sdirs, sm) | flat(sm)) toSeq
+    ((ss --- sdirs) pair (rebase(sdirs, sm) | flat(sm))).toSeq
   }
-  def configSettings = transResourceSettings ++ seq(
+  def configSettings = transResourceSettings ++ Seq(
     resourceProperties <<= (organization, version, scalaVersion, isSnapshot) map { (org, v, sv, isSnapshot) =>
       Map("org" -> org, "sbt.version" -> v, "scala.version" -> sv, "repositories" -> repositories(isSnapshot).mkString(IO.Newline))
     }
   )
-  def transResourceSettings = seq(
-    inputResourceDirectory <<= sourceDirectory / "input_resources",
+  def transResourceSettings = Seq(
+    inputResourceDirectory := sourceDirectory.value / "input_resources",
     inputResourceDirectories <<= Seq(inputResourceDirectory).join,
     inputResources <<= inputResourceDirectories.map(dirs => (dirs ** (-DirectoryFilter)).get),
     fileMappings in transformResources <<= transformResourceMappings,
@@ -74,7 +74,7 @@ object Transform {
     resourceGenerators <+= transformResources
   )
   def transformResourceMappings = (inputResources, inputResourceDirectories, resourceManaged) map { (rs, rdirs, rm) =>
-    (rs --- rdirs) x (rebase(rdirs, rm) | flat(rm)) toSeq
+    ((rs --- rdirs) pair (rebase(rdirs, rm) | flat(rm))).toSeq
   }
 
   def transform(in: File, out: File, map: Map[String, String]): File =
@@ -88,9 +88,12 @@ object Transform {
   def read(file: File): Option[String] = try { Some(IO.read(file)) } catch { case _: java.io.IOException => None }
   lazy val Property = """\$\{\{([\w.-]+)\}\}""".r
 
-  def repositories(isSnapshot: Boolean) = Releases :: (if (isSnapshot) Snapshots :: Nil else Nil)
+  def repositories(isSnapshot: Boolean) = Releases :: (if (isSnapshot) Snapshots :: SonatypeSnapshots :: Nil else Nil)
   lazy val Releases = typesafeRepository("releases")
   lazy val Snapshots = typesafeRepository("snapshots")
+  lazy val SonatypeSnapshots = sonatypeRepsoitory("snapshots")
+  def sonatypeRepsoitory(status: String) =
+    s"""  sonatype-$status: https://oss.sonatype.org/content/repositories/$status"""
   def typesafeRepository(status: String) =
     """  typesafe-ivy-%s: https://repo.typesafe.com/typesafe/ivy-%<s/, [organization]/[module]/[revision]/[type]s/[artifact](-[classifier]).[ext], bootOnly""" format status
 }

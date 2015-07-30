@@ -12,11 +12,36 @@ import org.apache.ivy.core.resolve.{ ResolvedModuleRevision, ResolveData }
 import org.apache.ivy.plugins.latest.LatestStrategy
 import org.apache.ivy.plugins.repository.file.{ FileRepository => IFileRepository, FileResource }
 import org.apache.ivy.plugins.repository.url.URLResource
-import org.apache.ivy.plugins.resolver.{ ChainResolver, BasicResolver, DependencyResolver }
+import org.apache.ivy.plugins.resolver._
 import org.apache.ivy.plugins.resolver.util.{ HasLatestStrategy, ResolvedResource }
 import org.apache.ivy.util.{ Message, MessageLogger, StringUtils => IvyStringUtils }
 
-class SbtChainResolver(name: String, resolvers: Seq[DependencyResolver], settings: IvySettings, updateOptions: UpdateOptions, log: Logger) extends ChainResolver {
+private[sbt] case class SbtChainResolver(
+    name: String,
+    resolvers: Seq[DependencyResolver],
+    settings: IvySettings,
+    updateOptions: UpdateOptions,
+    log: Logger) extends ChainResolver {
+
+  override def equals(o: Any): Boolean = o match {
+    case o: SbtChainResolver =>
+      this.name == o.name &&
+        this.resolvers == o.resolvers &&
+        this.settings == o.settings &&
+        this.updateOptions == o.updateOptions
+    case _ => false
+  }
+
+  override def hashCode: Int =
+    {
+      var hash = 1
+      hash = hash * 31 + this.name.##
+      hash = hash * 31 + this.resolvers.##
+      hash = hash * 31 + this.settings.##
+      hash = hash * 31 + this.updateOptions.##
+      hash
+    }
+
   // TODO - We need to special case the project resolver so it always "wins" when resolving with inter-project dependencies.
 
   // Initialize ourselves.
@@ -130,34 +155,39 @@ class SbtChainResolver(name: String, resolvers: Seq[DependencyResolver], setting
       val sorted =
         if (useLatest) (foundRevisions.sortBy {
           case (rmr, resolver) =>
+            Message.warn(s"Sorrting results from $rmr, using ${rmr.getPublicationDate} and ${rmr.getDescriptor.getPublicationDate}")
             // Just issue warning about issues with publication date, and fake one on it for now.
-            rmr.getDescriptor.getPublicationDate match {
-              case null =>
+            Option(rmr.getPublicationDate) orElse Option(rmr.getDescriptor.getPublicationDate) match {
+              case None =>
                 (resolver.findIvyFileRef(dd, data), rmr.getDescriptor) match {
                   case (null, _) =>
                     // In this instance, the dependency is specified by a direct URL or some other sort of "non-ivy" file
                     if (dd.isChanging)
                       Message.warn(s"Resolving a changing dependency (${rmr.getId}) with no ivy/pom file!, resolution order is undefined!")
+                    0L
                   case (ivf, dmd: DefaultModuleDescriptor) =>
                     val lmd = new java.util.Date(ivf.getLastModified)
                     Message.debug(s"Getting no publication date from resolver: ${resolver} for ${rmr.getId}, setting to: ${lmd}")
                     dmd.setPublicationDate(lmd)
+                    ivf.getLastModified
                   case _ =>
                     Message.warn(s"Getting null publication date from resolver: ${resolver} for ${rmr.getId}, resolution order is undefined!")
+                    0L
                 }
-              case _ => // All other cases ok
-            }
-            rmr.getDescriptor.getPublicationDate match {
-              case null => 0L
-              case d    => d.getTime
+              case Some(date) => // All other cases ok
+                date.getTime
             }
         }).reverse.headOption map {
           case (rmr, resolver) =>
+            Message.warn(s"Choosing ${resolver} for ${rmr.getId}")
             // Now that we know the real latest revision, let's force Ivy to use it
             val artifactOpt = findFirstArtifactRef(rmr.getDescriptor, dd, data, resolver)
             artifactOpt match {
               case None if resolver.getName == "inter-project" => // do nothing
-              case None                                        => throw new RuntimeException(s"\t${resolver.getName}: no ivy file nor artifact found for $rmr")
+              case None if resolver.isInstanceOf[CustomMavenResolver] =>
+              // do nothing for now....
+              // We want to see if the maven caching is sufficient and we do not need to duplicate within the ivy cache...
+              case None => throw new RuntimeException(s"\t${resolver.getName}: no ivy file nor artifact found for $rmr")
               case Some(artifactRef) =>
                 val systemMd = toSystem(rmr.getDescriptor)
                 getRepositoryCacheManager.cacheModuleDescriptor(resolver, artifactRef,
@@ -185,6 +215,9 @@ class SbtChainResolver(name: String, resolvers: Seq[DependencyResolver], setting
     }
   // Ivy seem to not want to use the module descriptor found at the latest resolver
   private[this] def reparseModuleDescriptor(dd: DependencyDescriptor, data: ResolveData, resolver: DependencyResolver, rmr: ResolvedModuleRevision): ResolvedModuleRevision =
+    // TODO - Redownloading/parsing the ivy file is not really the best way to make this correct.
+    //        We should figure out a better alternative, or directly attack the resolvers Ivy uses to
+    //        give them correct behavior around -SNAPSHOT.
     Option(resolver.findIvyFileRef(dd, data)) flatMap { ivyFile =>
       ivyFile.getResource match {
         case r: FileResource =>
@@ -197,7 +230,10 @@ class SbtChainResolver(name: String, resolvers: Seq[DependencyResolver], setting
           }
         case _ => None
       }
-    } getOrElse rmr
+    } getOrElse {
+      Message.warn(s"Unable to reparse ${dd.getDependencyRevisionId} from $resolver, using ${rmr.getPublicationDate}")
+      rmr
+    }
   /** Ported from BasicResolver#findFirstAirfactRef. */
   private[this] def findFirstArtifactRef(md: ModuleDescriptor, dd: DependencyDescriptor, data: ResolveData, resolver: DependencyResolver): Option[ResolvedResource] =
     {

@@ -13,6 +13,7 @@ import xsbt.test.{ CommentHandler, FileCommands, ScriptRunner, TestScriptParser 
 import IO.wrapNull
 
 final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launcher: File, launchOpts: Seq[String]) {
+  import ScriptedTests._
   private val testResources = new Resources(resourceBaseDirectory)
 
   val ScriptFilename = "test"
@@ -20,7 +21,9 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
 
   def scriptedTest(group: String, name: String, log: xsbti.Logger): Seq[() => Option[String]] =
     scriptedTest(group, name, Logger.xlog2Log(log))
-  def scriptedTest(group: String, name: String, log: Logger): Seq[() => Option[String]] = {
+  def scriptedTest(group: String, name: String, log: Logger): Seq[() => Option[String]] =
+    scriptedTest(group, name, emptyCallback, log)
+  def scriptedTest(group: String, name: String, prescripted: File => Unit, log: Logger): Seq[() => Option[String]] = {
     import Path._
     import GlobFilter._
     var failed = false
@@ -36,14 +39,15 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
             log.info("D " + str + " [DISABLED]")
             None
           } else {
-            try { scriptedTest(str, testDirectory, log); None }
+            try { scriptedTest(str, testDirectory, prescripted, log); None }
             catch { case e: xsbt.test.TestException => Some(str) }
           }
         }
       }
     }
   }
-  private def scriptedTest(label: String, testDirectory: File, log: Logger): Unit =
+
+  private def scriptedTest(label: String, testDirectory: File, prescripted: File => Unit, log: Logger): Unit =
     {
       val buffered = new BufferedLogger(new FullLogger(log))
       if (bufferLog)
@@ -74,6 +78,7 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
       }
 
       try {
+        prescripted(testDirectory)
         runTest()
         buffered.info("+ " + label + pendingString)
       } catch {
@@ -90,7 +95,9 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
       } finally { buffered.clear() }
     }
 }
-object ScriptedTests {
+
+object ScriptedTests extends ScriptedRunner {
+  val emptyCallback: File => Unit = { _ => () }
   def main(args: Array[String]) {
     val directory = new File(args(0))
     val buffer = args(1).toBoolean
@@ -100,16 +107,41 @@ object ScriptedTests {
     val bootProperties = new File(args(5))
     val tests = args.drop(6)
     val logger = ConsoleLogger()
-    run(directory, buffer, tests, logger, bootProperties, Array())
+    run(directory, buffer, tests, logger, bootProperties, Array(), emptyCallback)
   }
-  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], bootProperties: File, launchOpts: Array[String]): Unit =
-    run(resourceBaseDirectory, bufferLog, tests, ConsoleLogger(), bootProperties, launchOpts) //new FullLogger(Logger.xlog2Log(log)))
+}
 
-  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], logger: AbstractLogger, bootProperties: File, launchOpts: Array[String]) {
+class ScriptedRunner {
+  import ScriptedTests._
+
+  @deprecated("No longer used", "0.13.9")
+  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], bootProperties: File,
+    launchOpts: Array[String]): Unit =
+    run(resourceBaseDirectory, bufferLog, tests, ConsoleLogger(), bootProperties, launchOpts, emptyCallback) //new FullLogger(Logger.xlog2Log(log)))
+
+  // This is called by project/Scripted.scala
+  // Using java.util.List[File] to encode File => Unit
+  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], bootProperties: File,
+    launchOpts: Array[String], prescripted: java.util.List[File]): Unit =
+    run(resourceBaseDirectory, bufferLog, tests, ConsoleLogger(), bootProperties, launchOpts,
+      { f: File => prescripted.add(f); () }) //new FullLogger(Logger.xlog2Log(log)))
+
+  @deprecated("No longer used", "0.13.9")
+  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], bootProperties: File,
+    launchOpts: Array[String], prescripted: File => Unit): Unit =
+    run(resourceBaseDirectory, bufferLog, tests, ConsoleLogger(), bootProperties, launchOpts, prescripted)
+
+  @deprecated("No longer used", "0.13.9")
+  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], logger: AbstractLogger, bootProperties: File,
+    launchOpts: Array[String]): Unit =
+    run(resourceBaseDirectory, bufferLog, tests, logger, bootProperties, launchOpts, emptyCallback)
+
+  def run(resourceBaseDirectory: File, bufferLog: Boolean, tests: Array[String], logger: AbstractLogger, bootProperties: File,
+    launchOpts: Array[String], prescripted: File => Unit) {
     val runner = new ScriptedTests(resourceBaseDirectory, bufferLog, bootProperties, launchOpts)
     val allTests = get(tests, resourceBaseDirectory, logger) flatMap {
       case ScriptedTest(group, name) =>
-        runner.scriptedTest(group, name, logger)
+        runner.scriptedTest(group, name, prescripted, logger)
     }
     runAll(allTests)
   }
@@ -156,7 +188,7 @@ private[test] final class ListTests(baseDirectory: File, accept: ScriptedTest =>
         val (included, skipped) = allTests.toList.partition(test => accept(ScriptedTest(groupName, test.getName)))
         if (included.isEmpty)
           log.warn("Test group " + groupName + " skipped.")
-        else if (!skipped.isEmpty) {
+        else if (skipped.nonEmpty) {
           log.warn("Tests skipped in group " + group.getName + ":")
           skipped.foreach(testName => log.warn(" " + testName.getName))
         }

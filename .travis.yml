@@ -1,3 +1,11 @@
+# Use Docker-based container (instead of OpenVZ)
+sudo: false
+
+cache:
+  directories:
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt/boot
+
 language: scala
 
 # TODO - we'd like to actually test everything, but the process library has a deadlock right now
@@ -5,12 +13,10 @@ jdk:
   - openjdk6
 #  - oraclejdk7
 
-sudo: false
-
 env:
-  global:
-    - JVM_OPTS="-Xms1024m -Xmx1024m -XX:ReservedCodeCacheSize=128m -XX:MaxPermSize=256m"
   matrix:
+    - SCRIPTED_TEST="safeUnitTests"
+    - SCRIPTED_TEST="otherUnitTests"
     - SCRIPTED_TEST="scripted actions/*"
     - SCRIPTED_TEST="scripted api/*"
     - SCRIPTED_TEST="scripted compiler-project/*""
@@ -27,13 +33,22 @@ env:
     - SCRIPTED_TEST="scripted source-dependencies/*3of3"
     - SCRIPTED_TEST="scripted tests/*"
     - SCRIPTED_TEST="scripted project-load/*"
-    - SCRIPTED_TEST="safeUnitTests"
     - SCRIPTED_TEST="checkBuildScala211"
-
-script:
-  - sbt "$SCRIPTED_TEST"
+    - SCRIPTED_TEST="mavenResolverPluginTest:scripted dependency-management/*1of2 project/transitive-plugins"
+    - SCRIPTED_TEST="mavenResolverPluginTest:scripted dependency-management/*2of2"
 
 notifications:
   email:
-    - qbranch@typesafe.com
+    - eugene.yokota@typesafe.com
+    - joshua.suereth@typesafe.com
 
+before_script:
+  - mkdir -p $HOME/.sbt/launchers/0.13.8/
+  - curl -L -o $HOME/.sbt/launchers/0.13.8/sbt-launch.jar https://repo.typesafe.com/typesafe/ivy-releases/org.scala-sbt/sbt-launch/0.13.8/sbt-launch.jar
+
+script:
+  - sbt -J-XX:ReservedCodeCacheSize=128m "$SCRIPTED_TEST"
+
+  # Tricks to avoid unnecessary cache updates
+  - find $HOME/.sbt -name "*.lock" | xargs rm
+  - find $HOME/.ivy2 -name "ivydata-*.properties" | xargs rm

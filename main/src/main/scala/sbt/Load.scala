@@ -133,7 +133,7 @@ object Load {
       val settings = finalTransforms(buildConfigurations(loaded, getRootProject(projects), config.injectSettings))
       val delegates = config.delegates(loaded)
       val data = Def.make(settings)(delegates, config.scopeLocal, Project.showLoadingKey(loaded))
-      Project.checkTargets(data) foreach error
+      Project.checkTargets(data) foreach sys.error
       val index = structureIndex(data, settings, loaded.extra(data), projects)
       val streams = mkStreams(projects, loaded.root, data)
       (rootEval, new sbt.BuildStructure(projects, loaded.root, settings, data, index, streams, delegates, config.scopeLocal))
@@ -256,12 +256,12 @@ object Load {
     // the files aren't properly returned, even though they should be.
     // TODO - figure out where the caching of whether or not to generate classfiles occurs, and
     // put cleanups there, perhaps.
-    if (!keepSet.isEmpty) {
+    if (keepSet.nonEmpty) {
       def keepFile(f: File) = keepSet(f.getCanonicalPath)
       import Path._
       val existing = (baseTarget.***.get).filterNot(_.isDirectory)
       val toDelete = existing.filterNot(keepFile)
-      if (!toDelete.isEmpty) {
+      if (toDelete.nonEmpty) {
         IO.delete(toDelete)
       }
     }
@@ -585,7 +585,9 @@ object Load {
               val existingIds = otherProjects.projects map (_.id)
               val refs = existingIds map (id => ProjectRef(buildUri, id))
               val defaultID = autoID(buildBase, context, existingIds)
-              val root = finalizeProject(Build.defaultAggregatedProject(defaultID, buildBase, refs), files)
+              val root0 = if (discovered.isEmpty || java.lang.Boolean.getBoolean("sbt.root.ivyplugin")) Build.defaultAggregatedProject(defaultID, buildBase, refs)
+              else Build.generatedRootWithoutIvyPlugin(defaultID, buildBase, refs)
+              val root = finalizeProject(root0, files)
               val result = root +: (acc ++ otherProjects.projects)
               log.debug(s"[Loading] Done in ${buildBase}, returning: ${result.map(_.id).mkString("(", ", ", ")")}")
               LoadedProjects(result, generated ++ otherGenerated ++ generatedConfigClassFiles)
@@ -645,7 +647,7 @@ object Load {
       }
     // 2. Discover all the autoplugins and contributed configurations.
     val autoPlugins =
-      try loadedPlugins.detected.deducePlugins(transformedProject.plugins, log)
+      try loadedPlugins.detected.deducePluginsFromProject(transformedProject, log)
       catch { case e: AutoPluginException => throw translateAutoPluginException(e, transformedProject) }
     val autoConfigs = autoPlugins.flatMap(_.projectConfigurations)
 
@@ -711,11 +713,11 @@ object Load {
     // How to merge SbtFiles we read into one thing
     def merge(ls: Seq[LoadedSbtFile]): LoadedSbtFile = (LoadedSbtFile.empty /: ls) { _ merge _ }
     // Loads a given file, or pulls from the cache.
-    def memoLoadSettingsFile(src: File): LoadedSbtFile = memoSettings.get(src) getOrElse {
+    def memoLoadSettingsFile(src: File): LoadedSbtFile = memoSettings.getOrElse(src, {
       val lf = loadSettingsFile(src)
       memoSettings.put(src, lf.clearProjects) // don't load projects twice
       lf
-    }
+    })
     // Loads a set of sbt files, sorted by their lexical name (current behavior of sbt).
     def loadFiles(fs: Seq[File]): LoadedSbtFile =
       merge(fs.sortBy(_.getName).map(memoLoadSettingsFile))
@@ -723,8 +725,8 @@ object Load {
     // Finds all the build files associated with this project
     import AddSettings.{ User, SbtFiles, DefaultSbtFiles, Plugins, AutoPlugins, Sequence, BuildScalaFiles }
     def associatedFiles(auto: AddSettings): Seq[File] = auto match {
-      case sf: SbtFiles        => sf.files.map(f => IO.resolve(projectBase, f))
-      case sf: DefaultSbtFiles => defaultSbtFiles.filter(sf.include)
+      case sf: SbtFiles        => sf.files.map(f => IO.resolve(projectBase, f)).filterNot(_.isHidden)
+      case sf: DefaultSbtFiles => defaultSbtFiles.filter(sf.include).filterNot(_.isHidden)
       case q: Sequence         => (Seq.empty[File] /: q.sequence) { (b, add) => b ++ associatedFiles(add) }
       case _                   => Seq.empty
     }
@@ -777,7 +779,7 @@ object Load {
   def hasDefinition(dir: File) =
     {
       import Path._
-      !(dir * -GlobFilter(DefaultTargetName)).get.isEmpty
+      (dir * -GlobFilter(DefaultTargetName)).get.nonEmpty
     }
   def noPlugins(dir: File, config: sbt.LoadBuildConfiguration): sbt.LoadedPlugins =
     loadPluginDefinition(dir, config, PluginData(config.globalPluginClasspath, None, None))

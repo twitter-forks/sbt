@@ -20,11 +20,9 @@ import xsbti.api.Source
 import xsbti.compile.{ CompileOrder, DependencyChanges, GlobalsCache, Output, SingleOutput, MultipleOutput, CompileProgress }
 import CompileOrder.{ JavaThenScala, Mixed, ScalaThenJava }
 
-final class CompileConfiguration(val sources: Seq[File], val classpath: Seq[File],
-  val previousAnalysis: Analysis, val previousSetup: Option[CompileSetup], val currentSetup: CompileSetup, val progress: Option[CompileProgress], val getAnalysis: File => Option[Analysis], val definesClass: DefinesClass,
-  val reporter: Reporter, val compiler: AnalyzingCompiler, val javac: xsbti.compile.JavaCompiler, val cache: GlobalsCache, val incOptions: IncOptions)
-
+@deprecated("Use MixedAnalyzingCompiler or IC instead.", "0.13.8")
 class AggressiveCompile(cacheFile: File) {
+  @deprecated("Use IC.compile instead.", "0.13.8")
   def apply(compiler: AnalyzingCompiler,
     javac: xsbti.compile.JavaCompiler,
     sources: Seq[File], classpath: Seq[File],
@@ -90,7 +88,7 @@ class AggressiveCompile(cacheFile: File) {
         val (javaSrcs, scalaSrcs) = incSrc partition javaOnly
         logInputs(log, javaSrcs.size, scalaSrcs.size, outputLocs)
         def compileScala() =
-          if (!scalaSrcs.isEmpty) {
+          if (scalaSrcs.nonEmpty) {
             val sources = if (order == Mixed) incSrc else scalaSrcs
             val arguments = cArgs(Nil, absClasspath, None, options.options)
             timed("Scala compilation", log) {
@@ -98,7 +96,7 @@ class AggressiveCompile(cacheFile: File) {
             }
           }
         def compileJava() =
-          if (!javaSrcs.isEmpty) {
+          if (javaSrcs.nonEmpty) {
             import Path._
             @tailrec def ancestor(f1: File, f2: File): Boolean =
               if (f2 eq null) false else if (f1 == f2) true else ancestor(f1, f2.getParentFile)
@@ -120,7 +118,12 @@ class AggressiveCompile(cacheFile: File) {
 
             val loader = ClasspathUtilities.toLoader(searchClasspath)
             timed("Java compilation", log) {
-              javac.compile(javaSrcs.toArray, absClasspath.toArray, output, options.javacOptions.toArray, log)
+              try javac.compileWithReporter(javaSrcs.toArray, absClasspath.toArray, output, options.javacOptions.toArray, reporter, log)
+              catch {
+                // Handle older APIs
+                case _: NoSuchMethodError =>
+                  javac.compile(javaSrcs.toArray, absClasspath.toArray, output, options.javacOptions.toArray, log)
+              }
             }
 
             def readAPI(source: File, classes: Seq[Class[_]]): Set[String] = {
@@ -146,9 +149,12 @@ class AggressiveCompile(cacheFile: File) {
           // previous Analysis completely and start with empty Analysis object
           // that supports the particular value of the `nameHashing` flag.
           // Otherwise we'll be getting UnsupportedOperationExceptions
+          log.warn("Ignoring previous analysis due to incompatible nameHashing setting.")
           Analysis.empty(currentSetup.nameHashing)
         case Some(previous) if equiv.equiv(previous, currentSetup) => previousAnalysis
-        case _ => Incremental.prune(sourcesSet, previousAnalysis)
+        case _ =>
+          log.warn("Pruning sources from previous analysis, due to incompatible CompileSetup.")
+          Incremental.prune(sourcesSet, previousAnalysis)
       }
       IncrementalCompile(sourcesSet, entry, compile0, analysis, getAnalysis, output, log, incOptions)
     }
@@ -173,7 +179,7 @@ class AggressiveCompile(cacheFile: File) {
     val scalaMsg = Analysis.counted("Scala source", "", "s", scalaCount)
     val javaMsg = Analysis.counted("Java source", "", "s", javaCount)
     val combined = scalaMsg ++ javaMsg
-    if (!combined.isEmpty) {
+    if (combined.nonEmpty) {
       val locationsString = outputLocations.map(_.file.getAbsolutePath).mkString(",")
       log.info(combined.mkString("Compiling ", " and ", " to " + locationsString + "..."))
     }
@@ -188,27 +194,22 @@ class AggressiveCompile(cacheFile: File) {
   private[this] def explicitBootClasspath(options: Seq[String]): Seq[File] =
     options.dropWhile(_ != CompilerArguments.BootClasspathOption).drop(1).take(1).headOption.toList.flatMap(IO.parseClasspath)
 
-  val store = AggressiveCompile.staticCache(cacheFile, AnalysisStore.sync(AnalysisStore.cached(FileBasedStore(cacheFile))))
-}
-object AggressiveCompile {
-  import collection.mutable
-  import java.lang.ref.{ Reference, SoftReference }
-  private[this] val cache = new collection.mutable.HashMap[File, Reference[AnalysisStore]]
-  private def staticCache(file: File, backing: => AnalysisStore): AnalysisStore =
-    synchronized {
-      cache get file flatMap { ref => Option(ref.get) } getOrElse {
-        val b = backing
-        cache.put(file, new SoftReference(b))
-        b
-      }
-    }
+  val store = MixedAnalyzingCompiler.staticCachedStore(cacheFile)
 
+}
+@deprecated("Use MixedAnalyzingCompiler instead.", "0.13.8")
+object AggressiveCompile {
+  @deprecated("Use MixedAnalyzingCompiler.staticCachedStore instead.", "0.13.8")
+  def staticCachedStore(cacheFile: File) = MixedAnalyzingCompiler.staticCachedStore(cacheFile)
+
+  @deprecated("Deprecated in favor of new sbt.compiler.javac package.", "0.13.8")
   def directOrFork(instance: ScalaInstance, cpOptions: ClasspathOptions, javaHome: Option[File]): JavaTool =
     if (javaHome.isDefined)
       JavaCompiler.fork(cpOptions, instance)(forkJavac(javaHome))
     else
       JavaCompiler.directOrFork(cpOptions, instance)(forkJavac(None))
 
+  @deprecated("Deprecated in favor of new sbt.compiler.javac package.", "0.13.8")
   def forkJavac(javaHome: Option[File]): JavaCompiler.Fork =
     {
       import Path._
@@ -227,6 +228,7 @@ object AggressiveCompile {
     }
 }
 
+@deprecated("Deprecated in favor of new sbt.compiler.javac package.", "0.13.8")
 private[sbt] class JavacLogger(log: Logger) extends ProcessLogger {
   import scala.collection.mutable.ListBuffer
   import Level.{ Info, Warn, Error, Value => LogLevel }

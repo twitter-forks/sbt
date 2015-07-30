@@ -34,12 +34,42 @@ final class InlineIvyConfiguration(val paths: IvyPaths, val resolvers: Seq[Resol
     checksums: Seq[String], resolutionCacheDir: Option[File], log: Logger) =
     this(paths, resolvers, otherResolvers, moduleConfigurations, localOnly, lock, checksums, resolutionCacheDir, UpdateOptions(), log)
 
+  override def toString: String = s"InlineIvyConfiguration($paths, $resolvers, $otherResolvers, " +
+    s"$moduleConfigurations, $localOnly, $checksums, $resolutionCacheDir, $updateOptions)"
+
   type This = InlineIvyConfiguration
   def baseDirectory = paths.baseDirectory
   def withBase(newBase: File) = new InlineIvyConfiguration(paths.withBase(newBase), resolvers, otherResolvers, moduleConfigurations, localOnly, lock, checksums,
     resolutionCacheDir, updateOptions, log)
   def changeResolvers(newResolvers: Seq[Resolver]) = new InlineIvyConfiguration(paths, newResolvers, otherResolvers, moduleConfigurations, localOnly, lock, checksums,
     resolutionCacheDir, updateOptions, log)
+
+  override def equals(o: Any): Boolean = o match {
+    case o: InlineIvyConfiguration =>
+      this.paths == o.paths &&
+        this.resolvers == o.resolvers &&
+        this.otherResolvers == o.otherResolvers &&
+        this.moduleConfigurations == o.moduleConfigurations &&
+        this.localOnly == o.localOnly &&
+        this.checksums == o.checksums &&
+        this.resolutionCacheDir == o.resolutionCacheDir &&
+        this.updateOptions == o.updateOptions
+    case _ => false
+  }
+
+  override def hashCode: Int =
+    {
+      var hash = 1
+      hash = hash * 31 + this.paths.##
+      hash = hash * 31 + this.resolvers.##
+      hash = hash * 31 + this.otherResolvers.##
+      hash = hash * 31 + this.moduleConfigurations.##
+      hash = hash * 31 + this.localOnly.##
+      hash = hash * 31 + this.checksums.##
+      hash = hash * 31 + this.resolutionCacheDir.##
+      hash = hash * 31 + this.updateOptions.##
+      hash
+    }
 }
 final class ExternalIvyConfiguration(val baseDirectory: File, val uri: URI, val lock: Option[xsbti.GlobalLock],
     val extraResolvers: Seq[Resolver], val updateOptions: UpdateOptions, val log: Logger) extends IvyConfiguration {
@@ -82,15 +112,20 @@ final case class IvyFileConfiguration(file: File, ivyScala: Option[IvyScala], va
 final case class PomConfiguration(file: File, ivyScala: Option[IvyScala], validate: Boolean, autoScalaTools: Boolean = true) extends ModuleSettings {
   def noScala = copy(ivyScala = None)
 }
+
+// TODO: When we go sbt 1.0 we should rename InlineConfigurationWithExcludes to InlineConfiguration.
+@deprecated("Use InlineConfigurationWithExcludes.", "0.13.8")
 final case class InlineConfiguration(module: ModuleID, moduleInfo: ModuleInfo, dependencies: Seq[ModuleID], overrides: Set[ModuleID] = Set.empty, ivyXML: NodeSeq = NodeSeq.Empty, configurations: Seq[Configuration] = Nil, defaultConfiguration: Option[Configuration] = None, ivyScala: Option[IvyScala] = None, validate: Boolean = false, conflictManager: ConflictManager = ConflictManager.default) extends ModuleSettings {
   def withConfigurations(configurations: Seq[Configuration]) = copy(configurations = configurations)
   def noScala = copy(ivyScala = None)
-}
-@deprecated("Define a module using inline Scala (InlineConfiguration), a pom.xml (PomConfiguration), or an ivy.xml (IvyFileConfiguration).", "0.13.0")
-final case class EmptyConfiguration(module: ModuleID, moduleInfo: ModuleInfo, ivyScala: Option[IvyScala], validate: Boolean) extends ModuleSettings {
-  def noScala = copy(ivyScala = None)
+  def withExcludes: InlineConfigurationWithExcludes =
+    InlineConfigurationWithExcludes(this.module, this.moduleInfo, this.dependencies, this.overrides, Nil, this.ivyXML,
+      this.configurations, this.defaultConfiguration, this.ivyScala, this.validate, this.conflictManager)
+  def withOverrides(overrides: Set[ModuleID]): ModuleSettings =
+    copy(overrides = overrides)
 }
 object InlineConfiguration {
+  @deprecated("Use InlineConfigurationWithExcludes.explicitConfigurations.", "0.13.8")
   def configurations(explicitConfigurations: Iterable[Configuration], defaultConfiguration: Option[Configuration]) =
     if (explicitConfigurations.isEmpty) {
       defaultConfiguration match {
@@ -101,6 +136,104 @@ object InlineConfiguration {
     } else
       explicitConfigurations
 }
+
+final class InlineConfigurationWithExcludes private[sbt] (val module: ModuleID,
+    val moduleInfo: ModuleInfo,
+    val dependencies: Seq[ModuleID],
+    val overrides: Set[ModuleID],
+    val excludes: Seq[SbtExclusionRule],
+    val ivyXML: NodeSeq,
+    val configurations: Seq[Configuration],
+    val defaultConfiguration: Option[Configuration],
+    val ivyScala: Option[IvyScala],
+    val validate: Boolean,
+    val conflictManager: ConflictManager) extends ModuleSettings {
+  def withConfigurations(configurations: Seq[Configuration]) = copy(configurations = configurations)
+  def noScala = copy(ivyScala = None)
+  def withOverrides(overrides: Set[ModuleID]): ModuleSettings =
+    copy(overrides = overrides)
+
+  private[sbt] def copy(module: ModuleID = this.module,
+    moduleInfo: ModuleInfo = this.moduleInfo,
+    dependencies: Seq[ModuleID] = this.dependencies,
+    overrides: Set[ModuleID] = this.overrides,
+    excludes: Seq[SbtExclusionRule] = this.excludes,
+    ivyXML: NodeSeq = this.ivyXML,
+    configurations: Seq[Configuration] = this.configurations,
+    defaultConfiguration: Option[Configuration] = this.defaultConfiguration,
+    ivyScala: Option[IvyScala] = this.ivyScala,
+    validate: Boolean = this.validate,
+    conflictManager: ConflictManager = this.conflictManager): InlineConfigurationWithExcludes =
+    InlineConfigurationWithExcludes(module, moduleInfo, dependencies, overrides, excludes, ivyXML,
+      configurations, defaultConfiguration, ivyScala, validate, conflictManager)
+
+  override def toString: String =
+    s"InlineConfigurationWithExcludes($module, $moduleInfo, $dependencies, $overrides, $excludes, " +
+      s"$ivyXML, $configurations, $defaultConfiguration, $ivyScala, $validate, $conflictManager)"
+
+  override def equals(o: Any): Boolean = o match {
+    case o: InlineConfigurationWithExcludes =>
+      this.module == o.module &&
+        this.moduleInfo == o.moduleInfo &&
+        this.dependencies == o.dependencies &&
+        this.overrides == o.overrides &&
+        this.excludes == o.excludes &&
+        this.ivyXML == o.ivyXML &&
+        this.configurations == o.configurations &&
+        this.defaultConfiguration == o.defaultConfiguration &&
+        this.ivyScala == o.ivyScala &&
+        this.validate == o.validate &&
+        this.conflictManager == o.conflictManager
+    case _ => false
+  }
+
+  override def hashCode: Int =
+    {
+      var hash = 1
+      hash = hash * 31 + this.module.##
+      hash = hash * 31 + this.dependencies.##
+      hash = hash * 31 + this.overrides.##
+      hash = hash * 31 + this.excludes.##
+      hash = hash * 31 + this.ivyXML.##
+      hash = hash * 31 + this.configurations.##
+      hash = hash * 31 + this.defaultConfiguration.##
+      hash = hash * 31 + this.ivyScala.##
+      hash = hash * 31 + this.validate.##
+      hash = hash * 31 + this.conflictManager.##
+      hash
+    }
+}
+object InlineConfigurationWithExcludes {
+  def apply(module: ModuleID,
+    moduleInfo: ModuleInfo,
+    dependencies: Seq[ModuleID],
+    overrides: Set[ModuleID] = Set.empty,
+    excludes: Seq[SbtExclusionRule] = Nil,
+    ivyXML: NodeSeq = NodeSeq.Empty,
+    configurations: Seq[Configuration] = Nil,
+    defaultConfiguration: Option[Configuration] = None,
+    ivyScala: Option[IvyScala] = None,
+    validate: Boolean = false,
+    conflictManager: ConflictManager = ConflictManager.default): InlineConfigurationWithExcludes =
+    new InlineConfigurationWithExcludes(module, moduleInfo, dependencies, overrides, excludes, ivyXML,
+      configurations, defaultConfiguration, ivyScala, validate, conflictManager)
+
+  def configurations(explicitConfigurations: Iterable[Configuration], defaultConfiguration: Option[Configuration]) =
+    if (explicitConfigurations.isEmpty) {
+      defaultConfiguration match {
+        case Some(Configurations.DefaultIvyConfiguration) => Configurations.Default :: Nil
+        case Some(Configurations.DefaultMavenConfiguration) => Configurations.defaultMavenConfigurations
+        case _ => Nil
+      }
+    } else
+      explicitConfigurations
+}
+
+@deprecated("Define a module using inline Scala (InlineConfiguration), a pom.xml (PomConfiguration), or an ivy.xml (IvyFileConfiguration).", "0.13.0")
+final case class EmptyConfiguration(module: ModuleID, moduleInfo: ModuleInfo, ivyScala: Option[IvyScala], validate: Boolean) extends ModuleSettings {
+  def noScala = copy(ivyScala = None)
+}
+
 object ModuleSettings {
   @deprecated("Explicitly select configuration from pom.xml, ivy.xml, or inline Scala.", "0.13.0")
   def apply(ivyScala: Option[IvyScala], validate: Boolean, module: => ModuleID, moduleInfo: => ModuleInfo)(baseDirectory: File, log: Logger): ModuleSettings =

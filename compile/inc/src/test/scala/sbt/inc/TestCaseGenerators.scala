@@ -11,6 +11,7 @@ import Gen._
 import sbt.Relation
 import xsbti.api._
 import xsbti.SafeLazy
+import xsbti.DependencyContext._
 
 /**
  * Scalacheck generators for Analysis objects and their substructures.
@@ -187,7 +188,9 @@ object TestCaseGenerators {
     inheritance <- genSubRSourceDependencies(memberRef)
     classes <- genStringRelation(srcs)
     names <- genStringRelation(srcs)
-  } yield Relations.make(srcProd, binaryDep, memberRef, inheritance, classes, names)
+    internal <- InternalDependencies(Map(DependencyByMemberRef -> memberRef.internal, DependencyByInheritance -> inheritance.internal))
+    external <- ExternalDependencies(Map(DependencyByMemberRef -> memberRef.external, DependencyByInheritance -> inheritance.external))
+  } yield Relations.make(srcProd, binaryDep, internal, external, classes, names)
 
   def genAnalysis(nameHashing: Boolean): Gen[Analysis] = for {
     rels <- if (nameHashing) genRelationsNameHashing else genRelations

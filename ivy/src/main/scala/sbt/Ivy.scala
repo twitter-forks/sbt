@@ -14,19 +14,20 @@ import java.util.{ Collection, Collections => CS, Date }
 import CS.singleton
 
 import org.apache.ivy.Ivy
+import org.apache.ivy.core.report.ResolveReport
 import org.apache.ivy.core.{ IvyPatternHelper, LogOptions, IvyContext }
-import org.apache.ivy.core.cache.{ CacheMetadataOptions, DefaultRepositoryCacheManager, ModuleDescriptorWriter }
+import org.apache.ivy.core.cache.{ ResolutionCacheManager, CacheMetadataOptions, DefaultRepositoryCacheManager, ModuleDescriptorWriter }
 import org.apache.ivy.core.event.EventManager
 import org.apache.ivy.core.module.descriptor.{ Artifact => IArtifact, DefaultArtifact, DefaultDependencyArtifactDescriptor, MDArtifact }
 import org.apache.ivy.core.module.descriptor.{ DefaultDependencyDescriptor, DefaultModuleDescriptor, DependencyDescriptor, ModuleDescriptor, License }
-import org.apache.ivy.core.module.descriptor.{ OverrideDependencyDescriptorMediator }
+import org.apache.ivy.core.module.descriptor.OverrideDependencyDescriptorMediator
 import org.apache.ivy.core.module.id.{ ArtifactId, ModuleId, ModuleRevisionId }
-import org.apache.ivy.core.resolve.{ IvyNode, ResolveData, ResolvedModuleRevision, ResolveEngine }
+import org.apache.ivy.core.resolve._
 import org.apache.ivy.core.settings.IvySettings
 import org.apache.ivy.core.sort.SortEngine
 import org.apache.ivy.plugins.latest.{ LatestStrategy, LatestRevisionStrategy, ArtifactInfo }
 import org.apache.ivy.plugins.matcher.PatternMatcher
-import org.apache.ivy.plugins.parser.m2.PomModuleDescriptorParser
+import org.apache.ivy.plugins.parser.m2.{ PomModuleDescriptorParser }
 import org.apache.ivy.plugins.resolver.{ ChainResolver, DependencyResolver, BasicResolver }
 import org.apache.ivy.plugins.resolver.util.{ HasLatestStrategy, ResolvedResource }
 import org.apache.ivy.plugins.version.ExactVersionMatcher
@@ -68,9 +69,11 @@ final class IvySbt(val configuration: IvyConfiguration) {
   private lazy val settings: IvySettings =
     {
       val is = new IvySettings
+
       is.setBaseDir(baseDirectory)
       is.setCircularDependencyStrategy(configuration.updateOptions.circularDependencyLevel.ivyStrategy)
       CustomPomParser.registerDefault
+
       configuration match {
         case e: ExternalIvyConfiguration =>
           IvySbt.addResolvers(e.extraResolvers, is, configuration.log)
@@ -104,6 +107,7 @@ final class IvySbt(val configuration: IvyConfiguration) {
           super.bind()
         }
       }
+
       i.setSettings(settings)
       i.bind()
       i.getLoggerEngine.pushLogger(new IvyLoggerInterface(configuration.log))
@@ -163,16 +167,17 @@ final class IvySbt(val configuration: IvyConfiguration) {
       {
         val (baseModule, baseConfiguration) =
           moduleSettings match {
-            case ic: InlineConfiguration   => configureInline(ic, configuration.log)
-            case ec: EmptyConfiguration    => configureEmpty(ec)
-            case pc: PomConfiguration      => configurePom(pc)
-            case ifc: IvyFileConfiguration => configureIvyFile(ifc)
+            case ic: InlineConfiguration             => configureInline(ic.withExcludes, configuration.log)
+            case ic: InlineConfigurationWithExcludes => configureInline(ic, configuration.log)
+            case ec: EmptyConfiguration              => configureEmpty(ec)
+            case pc: PomConfiguration                => configurePom(pc)
+            case ifc: IvyFileConfiguration           => configureIvyFile(ifc)
           }
         moduleSettings.ivyScala.foreach(IvyScala.checkModule(baseModule, baseConfiguration, configuration.log))
         IvySbt.addExtraNamespace(baseModule)
         (baseModule, baseConfiguration)
       }
-    private def configureInline(ic: InlineConfiguration, log: Logger) =
+    private def configureInline(ic: InlineConfigurationWithExcludes, log: Logger) =
       {
         import ic._
         val moduleID = newConfiguredModuleID(module, moduleInfo, configurations)
@@ -183,6 +188,7 @@ final class IvySbt(val configuration: IvyConfiguration) {
         val parser = IvySbt.parseIvyXML(ivy.getSettings, IvySbt.wrapped(module, ivyXML), moduleID, defaultConf.name, validate)
         IvySbt.addMainArtifact(moduleID)
         IvySbt.addOverrides(moduleID, overrides, ivy.getSettings.getMatcher(PatternMatcher.EXACT))
+        IvySbt.addExcludes(moduleID, excludes, ivyScala)
         val transformedDeps = IvySbt.overrideDirect(dependencies, overrides)
         IvySbt.addDependencies(moduleID, transformedDeps, parser)
         (moduleID, parser.getDefaultConf)
@@ -282,7 +288,7 @@ private[sbt] object IvySbt {
   def resolverChain(name: String, resolvers: Seq[Resolver], localOnly: Boolean, settings: IvySettings, log: Logger): DependencyResolver =
     resolverChain(name, resolvers, localOnly, settings, UpdateOptions(), log)
   def resolverChain(name: String, resolvers: Seq[Resolver], localOnly: Boolean, settings: IvySettings, updateOptions: UpdateOptions, log: Logger): DependencyResolver = {
-    def mapResolvers(rs: Seq[Resolver]) = rs.map(r => ConvertResolver(r, settings, log))
+    def mapResolvers(rs: Seq[Resolver]) = rs.map(r => ConvertResolver(r, settings, updateOptions, log))
     val (projectResolvers, rest) = resolvers.partition(_.name == "inter-project")
     if (projectResolvers.isEmpty) new ivyint.SbtChainResolver(name, mapResolvers(rest), settings, updateOptions, log)
     else {
@@ -433,9 +439,10 @@ private[sbt] object IvySbt {
     {
       val sub = CrossVersion(scalaFullVersion, scalaBinaryVersion)
       m match {
-        case ec: EmptyConfiguration  => ec.copy(module = sub(ec.module))
-        case ic: InlineConfiguration => ic.copy(module = sub(ic.module), dependencies = ic.dependencies map sub, overrides = ic.overrides map sub)
-        case _                       => m
+        case ec: EmptyConfiguration              => ec.copy(module = sub(ec.module))
+        case ic: InlineConfiguration             => ic.copy(module = sub(ic.module), dependencies = ic.dependencies map sub, overrides = ic.overrides map sub)
+        case ic: InlineConfigurationWithExcludes => ic.copy(module = sub(ic.module), dependencies = ic.dependencies map sub, overrides = ic.overrides map sub)
+        case _                                   => m
       }
     }
 
@@ -496,7 +503,7 @@ private[sbt] object IvySbt {
   private def hasInfo(module: ModuleID, x: scala.xml.NodeSeq) =
     {
       val info = <g>{ x }</g> \ "info"
-      if (!info.isEmpty) {
+      if (info.nonEmpty) {
         def check(found: NodeSeq, expected: String, label: String) =
           if (found.isEmpty)
             sys.error("Missing " + label + " in inline Ivy XML.")
@@ -508,7 +515,7 @@ private[sbt] object IvySbt {
         check(info \ "@module", module.name, "name")
         check(info \ "@revision", module.revision, "version")
       }
-      !info.isEmpty
+      info.nonEmpty
     }
   /** Parses the given in-memory Ivy file 'xml', using the existing 'moduleID' and specifying the given 'defaultConfiguration'. */
   private def parseIvyXML(settings: IvySettings, xml: scala.xml.NodeSeq, moduleID: DefaultModuleDescriptor, defaultConfiguration: String, validate: Boolean): CustomXmlParser.CustomParser =
@@ -522,6 +529,29 @@ private[sbt] object IvySbt {
       parser.setInput(xml.getBytes)
       parser.parse()
       parser
+    }
+
+  def inconsistentDuplicateWarning(moduleID: DefaultModuleDescriptor): List[String] =
+    {
+      import IvyRetrieve.toModuleID
+      val dds = moduleID.getDependencies
+      inconsistentDuplicateWarning(dds map { dd => toModuleID(dd.getDependencyRevisionId) })
+    }
+
+  def inconsistentDuplicateWarning(dependencies: Seq[ModuleID]): List[String] =
+    {
+      val warningHeader = "Multiple dependencies with the same organization/name but different versions. To avoid conflict, pick one version:"
+      val out: mutable.ListBuffer[String] = mutable.ListBuffer()
+      (dependencies groupBy { dep => (dep.organization, dep.name) }) foreach {
+        case (k, vs) if vs.size > 1 =>
+          val v0 = vs.head
+          (vs find { _.revision != v0.revision }) foreach { v =>
+            out += s" * ${v0.organization}:${v0.name}:(" + (vs map { _.revision }).mkString(", ") + ")"
+          }
+        case _ => ()
+      }
+      if (out.isEmpty) Nil
+      else warningHeader :: out.toList
     }
 
   /** This method is used to add inline dependencies to the provided module. */
@@ -582,7 +612,7 @@ private[sbt] object IvySbt {
       for (artifact <- dependency.explicitArtifacts) {
         import artifact.{ name, classifier, `type`, extension, url }
         val extraMap = extra(artifact)
-        val ivyArtifact = new DefaultDependencyArtifactDescriptor(dependencyDescriptor, name, `type`, extension, url.getOrElse(null), extraMap)
+        val ivyArtifact = new DefaultDependencyArtifactDescriptor(dependencyDescriptor, name, `type`, extension, url.orNull, extraMap)
         copyConfigurations(artifact, ivyArtifact.addConfiguration)
         for (conf <- dependencyDescriptor.getModuleConfigurations)
           dependencyDescriptor.addDependencyArtifact(conf, ivyArtifact)
@@ -601,6 +631,19 @@ private[sbt] object IvySbt {
     {
       val confs = if (artifact.configurations.isEmpty) allConfigurations else artifact.configurations.map(_.name)
       confs foreach addConfiguration
+    }
+
+  def addExcludes(moduleID: DefaultModuleDescriptor, excludes: Seq[SbtExclusionRule], ivyScala: Option[IvyScala]): Unit =
+    excludes foreach addExclude(moduleID, ivyScala)
+  def addExclude(moduleID: DefaultModuleDescriptor, ivyScala: Option[IvyScala])(exclude0: SbtExclusionRule): Unit =
+    {
+      // this adds _2.11 postfix
+      val exclude = CrossVersion.substituteCross(exclude0, ivyScala)
+      val confs =
+        if (exclude.configurations.isEmpty) moduleID.getConfigurationsNames.toList
+        else exclude.configurations
+      val excludeRule = IvyScala.excludeRule(exclude.organization, exclude.name, confs, exclude.artifact)
+      moduleID.addExcludeRule(excludeRule)
     }
 
   def addOverrides(moduleID: DefaultModuleDescriptor, overrides: Set[ModuleID], matcher: PatternMatcher): Unit =

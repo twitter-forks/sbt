@@ -12,7 +12,9 @@ import org.apache.ivy.util.extendable.ExtendableItem
 import java.io.{ File, InputStream }
 import java.net.URL
 import java.util.regex.Pattern
+import sbt.mavenint.{ PomExtraDependencyAttributes, SbtPomExtraProperties }
 
+@deprecated("We now use an Aether-based pom parser.", "0.13.8")
 final class CustomPomParser(delegate: ModuleDescriptorParser, transform: (ModuleDescriptorParser, ModuleDescriptor) => ModuleDescriptor) extends ModuleDescriptorParser {
   override def parseDescriptor(ivySettings: ParserSettings, descriptorURL: URL, validate: Boolean) =
     transform(this, delegate.parseDescriptor(ivySettings, descriptorURL, validate))
@@ -26,28 +28,38 @@ final class CustomPomParser(delegate: ModuleDescriptorParser, transform: (Module
   override def getType() = delegate.getType()
   override def getMetadataArtifact(mrid: ModuleRevisionId, res: Resource) = delegate.getMetadataArtifact(mrid, res)
 }
+@deprecated("We now use an Aether-based pom parser.", "0.13.8")
 object CustomPomParser {
 
   // Evil hackery to override the default maven pom mappings.
   ReplaceMavenConfigurationMappings.init()
 
   /** The key prefix that indicates that this is used only to store extra information and is not intended for dependency resolution.*/
-  val InfoKeyPrefix = "info."
-  val ApiURLKey = "info.apiURL"
+  val InfoKeyPrefix = SbtPomExtraProperties.POM_INFO_KEY_PREFIX
+  val ApiURLKey = SbtPomExtraProperties.POM_API_KEY
 
-  val SbtVersionKey = "sbtVersion"
-  val ScalaVersionKey = "scalaVersion"
-  val ExtraAttributesKey = "extraDependencyAttributes"
+  val SbtVersionKey = PomExtraDependencyAttributes.SbtVersionKey
+  val ScalaVersionKey = PomExtraDependencyAttributes.ScalaVersionKey
+  val ExtraAttributesKey = PomExtraDependencyAttributes.ExtraAttributesKey
   private[this] val unqualifiedKeys = Set(SbtVersionKey, ScalaVersionKey, ExtraAttributesKey, ApiURLKey)
 
   // packagings that should be jars, but that Ivy doesn't handle as jars
+  // TODO - move this elsewhere.
   val JarPackagings = Set("eclipse-plugin", "hk2-jar", "orbit", "scala-jar")
   val default = new CustomPomParser(PomModuleDescriptorParser.getInstance, defaultTransform)
 
   private[this] val TransformedHashKey = "e:sbtTransformHash"
   // A hash of the parameters transformation is based on.
   // If a descriptor has a different hash, we need to retransform it.
-  private[this] val TransformHash: String = hash((unqualifiedKeys ++ JarPackagings).toSeq.sorted)
+  private[this] def makeCoords(mrid: ModuleRevisionId): String = s"${mrid.getOrganisation}:${mrid.getName}:${mrid.getRevision}"
+
+  // We now include the ModuleID in a hash, to ensure that parent-pom transformations don't corrupt child poms.
+  private[this] def MakeTransformHash(md: ModuleDescriptor): String = {
+    val coords: String = makeCoords(md.getModuleRevisionId)
+
+    hash((unqualifiedKeys ++ JarPackagings ++ Set(coords)).toSeq.sorted)
+  }
+
   private[this] def hash(ss: Seq[String]): String = Hash.toHex(Hash(ss.flatMap(_ getBytes "UTF-8").toArray))
 
   // Unfortunately, ModuleDescriptorParserRegistry is add-only and is a singleton instance.
@@ -61,11 +73,12 @@ object CustomPomParser {
     {
       val oldTransformedHashKey = "sbtTransformHash"
       val extraInfo = md.getExtraInfo
-      // sbt 0.13.1 used "sbtTransformHash" instead of "e:sbtTransformHash" until #1192 so read both 
+      val MyHash = MakeTransformHash(md)
+      // sbt 0.13.1 used "sbtTransformHash" instead of "e:sbtTransformHash" until #1192 so read both
       Option(extraInfo).isDefined &&
         ((Option(extraInfo get TransformedHashKey) orElse Option(extraInfo get oldTransformedHashKey)) match {
-          case Some(TransformHash) => true
-          case _                   => false
+          case Some(MyHash) => true
+          case _            => false
         })
     }
 
@@ -91,10 +104,10 @@ object CustomPomParser {
       val mergeDuplicates = IvySbt.hasDuplicateDependencies(md.getDependencies)
 
       val unqualify = toUnqualify(filtered)
-      if (unqualify.isEmpty && extraDepAttributes.isEmpty && !convertArtifacts && !mergeDuplicates)
-        md
-      else
-        addExtra(unqualify, extraDepAttributes, parser, md)
+
+      // Here we always add extra attributes.  There's a scenario where parent-pom information corrupts child-poms with "e:" namespaced xml elements
+      // and we have to force the every generated xml file to have the appropriate xml namespace
+      addExtra(unqualify, extraDepAttributes, parser, md)
     }
   // The <properties> element of the pom is used to store additional metadata, such as for sbt plugins or for the base URL for API docs.
   // This is done because the pom XSD does not appear to allow extra metadata anywhere else.
@@ -123,46 +136,24 @@ object CustomPomParser {
     }
 
   private[this] def getDependencyExtra(m: Map[String, String]): Map[ModuleRevisionId, Map[String, String]] =
-    (m get ExtraAttributesKey) match {
-      case None => Map.empty
-      case Some(str) =>
-        def processDep(m: ModuleRevisionId) = (simplify(m), filterCustomExtra(m, include = true))
-        readDependencyExtra(str).map(processDep).toMap
-    }
+    PomExtraDependencyAttributes.getDependencyExtra(m)
 
-  def qualifiedExtra(item: ExtendableItem): Map[String, String] =
-    {
-      import collection.JavaConverters._
-      item.getQualifiedExtraAttributes.asInstanceOf[java.util.Map[String, String]].asScala.toMap
-    }
+  def qualifiedExtra(item: ExtendableItem): Map[String, String] = PomExtraDependencyAttributes.qualifiedExtra(item)
   def filterCustomExtra(item: ExtendableItem, include: Boolean): Map[String, String] =
     (qualifiedExtra(item) filterKeys { k => qualifiedIsExtra(k) == include })
 
   def writeDependencyExtra(s: Seq[DependencyDescriptor]): Seq[String] =
-    s.flatMap { dd =>
-      val revId = dd.getDependencyRevisionId
-      if (filterCustomExtra(revId, include = true).isEmpty)
-        Nil
-      else
-        revId.encodeToString :: Nil
-    }
+    PomExtraDependencyAttributes.writeDependencyExtra(s)
 
   // parses the sequence of dependencies with extra attribute information, with one dependency per line
-  def readDependencyExtra(s: String): Seq[ModuleRevisionId] =
-    LinesP.split(s).map(_.trim).filter(!_.isEmpty).map(ModuleRevisionId.decode)
+  def readDependencyExtra(s: String): Seq[ModuleRevisionId] = PomExtraDependencyAttributes.readDependencyExtra(s)
 
-  private[this] val LinesP = Pattern.compile("(?m)^")
-
-  def qualifiedIsExtra(k: String): Boolean = k.endsWith(ScalaVersionKey) || k.endsWith(SbtVersionKey)
+  def qualifiedIsExtra(k: String): Boolean = PomExtraDependencyAttributes.qualifiedIsExtra(k)
 
   // Reduces the id to exclude custom extra attributes
   // This makes the id suitable as a key to associate a dependency parsed from a <dependency> element
   //  with the extra attributes from the <properties> section
-  def simplify(id: ModuleRevisionId): ModuleRevisionId =
-    {
-      import collection.JavaConverters._
-      ModuleRevisionId.newInstance(id.getOrganisation, id.getName, id.getBranch, id.getRevision, filterCustomExtra(id, include = false).asJava)
-    }
+  def simplify(id: ModuleRevisionId): ModuleRevisionId = PomExtraDependencyAttributes.simplify(id)
 
   private[this] def addExtra(dep: DependencyDescriptor, extra: Map[ModuleRevisionId, Map[String, String]]): DependencyDescriptor =
     {
@@ -203,7 +194,7 @@ object CustomPomParser {
 
       for (l <- md.getLicenses) dmd.addLicense(l)
       for ((key, value) <- md.getExtraInfo.asInstanceOf[java.util.Map[String, String]].asScala) dmd.addExtraInfo(key, value)
-      dmd.addExtraInfo(TransformedHashKey, TransformHash) // mark as transformed by this version, so we don't need to do it again
+      dmd.addExtraInfo(TransformedHashKey, MakeTransformHash(md)) // mark as transformed by this version, so we don't need to do it again
       for ((key, value) <- md.getExtraAttributesNamespaces.asInstanceOf[java.util.Map[String, String]].asScala) dmd.addExtraAttributeNamespace(key, value)
       IvySbt.addExtraNamespace(dmd)
 

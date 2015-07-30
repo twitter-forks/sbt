@@ -1,6 +1,6 @@
 import sbt._
 import Keys._
-import Status.publishStatus
+import StatusPlugin.autoImport._
 import com.typesafe.sbt.{ SbtGhPages, SbtGit, SbtSite, site => sbtsite }
 import SbtSite.{ site, SiteKeys }
 import SbtGhPages.{ ghpages, GhPagesKeys => ghkeys }
@@ -35,9 +35,8 @@ object Docs {
   }
 
   def siteIncludeSxr(prefix: String) = Seq(
-    mappings in sxr <<= sxr.map(dir => Path.allSubpaths(dir).toSeq),
-    site.addMappingsToSiteDir(mappings in sxr, prefix)
-  )
+    mappings in sxr <<= sxr.map(dir => Path.allSubpaths(dir).toSeq)
+  ) ++ site.addMappingsToSiteDir(mappings in sxr, prefix)
 
   def synchLocalImpl = (ghkeys.privateMappings, ghkeys.updatedRepository, version, streams) map {
     (mappings, repo, v, s) =>

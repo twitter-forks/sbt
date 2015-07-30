@@ -93,10 +93,9 @@ object EvaluateConfigurations {
    *
    * @param eval    The evaluating scala compiler instance we use to handle evaluating scala configuration.
    * @param file    The file we've parsed
-   * @param lines   The lines of the configurtion we'd like to evaluate.
    * @param imports The default imports to use in this .sbt configuration.
    *
-   * @return A function which can take an sbt classloader and return the raw types/configuratoin
+   * @return A function which can take an sbt classloader and return the raw types/configuration
    *         which was compiled/parsed for the given file.
    */
   private[sbt] def evaluateSbtFile(eval: Eval, file: File, lines: Seq[String], imports: Seq[String], offset: Int): LazyClassLoaded[LoadedSbtFile] =
@@ -215,7 +214,7 @@ object EvaluateConfigurations {
 
   /** Configures the use of the old sbt parser. */
   private[sbt] def useOldParser: Boolean =
-    sys.props.get("sbt.parser.simple").map(java.lang.Boolean.parseBoolean).getOrElse(false)
+    sys.props.get("sbt.parser.simple").exists(java.lang.Boolean.parseBoolean)
   /**
    * Splits a set of lines into (imports, expressions).  That is,
    * anything on the right of the tuple is a scala expression (definition or setting).

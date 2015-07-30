@@ -16,6 +16,3 @@ val pom = <scm>
   </developers>
 
 publishMavenStyle := true
-
-
-

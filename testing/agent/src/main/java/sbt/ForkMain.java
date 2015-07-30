@@ -95,13 +95,15 @@ public class ForkMain {
 
 	static class ForkError extends Exception {
 		private String originalMessage;
+		private String originalName;
 		private ForkError cause;
 		ForkError(Throwable t) {
 			originalMessage = t.getMessage();
+			originalName = t.getClass().getName();
 			setStackTrace(t.getStackTrace());
 			if (t.getCause() != null) cause = new ForkError(t.getCause());
 		}
-		public String getMessage() { return originalMessage; }
+		public String getMessage() { return originalName + ": " + originalMessage; }
 		public Exception getCause() { return cause; }
 	}
 
@@ -132,7 +134,7 @@ public class ForkMain {
 
 	private static class Run {
 
-		void run(ObjectInputStream is, ObjectOutputStream os) throws Exception {
+		void run(ObjectInputStream is, ObjectOutputStream os) {
 			try {
 				runTests(is, os);
 			} catch (RunAborted e) {

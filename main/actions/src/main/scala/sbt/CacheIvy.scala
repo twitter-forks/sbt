@@ -112,7 +112,12 @@ object CacheIvy {
       m => ((m.organization, m.name, m.revision, m.configurations), (m.isChanging, m.isTransitive, m.isForce, m.explicitArtifacts, m.exclusions, m.extraAttributes, m.crossVersion)),
       { case ((o, n, r, cs), (ch, t, f, as, excl, x, cv)) => ModuleID(o, n, r, cs, ch, t, f, as, excl, x, cv) }
     )
-  implicit def moduleSetIC: InputCache[Set[ModuleID]] = basicInput(defaultEquiv, immutableSetFormat)
+  // For some reason sbinary seems to detect unserialized instance Set[ModuleID] to be not equal. #1620
+  implicit def moduleSetIC: InputCache[Set[ModuleID]] =
+    {
+      implicit def toSeq(ms: Set[ModuleID]): Seq[ModuleID] = ms.toSeq.sortBy { _.toString }
+      wrapIn
+    }
 
   implicit def configurationFormat(implicit sf: Format[String]): Format[Configuration] =
     wrap[Configuration, String](_.name, s => new Configuration(s))
@@ -130,23 +135,28 @@ object CacheIvy {
 
   implicit def inlineIvyIC: InputCache[InlineIvyConfiguration] = wrapIn
   implicit def moduleSettingsIC: InputCache[ModuleSettings] =
-    unionInputCache[ModuleSettings, PomConfiguration :+: InlineConfiguration :+: EmptyConfiguration :+: IvyFileConfiguration :+: HNil]
+    unionInputCache[ModuleSettings, PomConfiguration :+: InlineConfiguration :+: InlineConfigurationWithExcludes :+: EmptyConfiguration :+: IvyFileConfiguration :+: HNil]
 
   implicit def ivyConfigurationIC: InputCache[IvyConfiguration] =
     unionInputCache[IvyConfiguration, InlineIvyConfiguration :+: ExternalIvyConfiguration :+: HNil]
 
   object L4 {
+    implicit val inlineWithExcludesToHL = (c: InlineConfigurationWithExcludes) =>
+      c.module :+: c.dependencies :+: c.ivyXML :+: c.configurations :+: c.defaultConfiguration.map(_.name) :+:
+        c.ivyScala :+: c.validate :+: c.overrides :+: c.excludes :+: HNil
     implicit def moduleConfToHL = (m: ModuleConfiguration) => m.organization :+: m.name :+: m.revision :+: m.resolver :+: HNil
     implicit def emptyToHL = (e: EmptyConfiguration) => e.module :+: e.ivyScala :+: e.validate :+: HNil
     implicit def inlineToHL = (c: InlineConfiguration) => c.module :+: c.dependencies :+: c.ivyXML :+: c.configurations :+: c.defaultConfiguration.map(_.name) :+: c.ivyScala :+: c.validate :+: c.overrides :+: HNil
   }
   import L4._
 
+  implicit def inlineWithExcludesIC: InputCache[InlineConfigurationWithExcludes] = wrapIn
   implicit def emptyIC: InputCache[EmptyConfiguration] = wrapIn
   implicit def inlineIC: InputCache[InlineConfiguration] = wrapIn
   implicit def moduleConfIC: InputCache[ModuleConfiguration] = wrapIn
 
   object L3 {
+    implicit def mavenCacheToHL = (m: MavenCache) => m.name :+: m.rootFile.getAbsolutePath :+: HNil
     implicit def mavenRToHL = (m: MavenRepository) => m.name :+: m.root :+: HNil
     implicit def fileRToHL = (r: FileRepository) => r.name :+: r.configuration :+: r.patterns :+: HNil
     implicit def urlRToHL = (u: URLRepository) => u.name :+: u.patterns :+: HNil
@@ -160,7 +170,7 @@ object CacheIvy {
 
   implicit lazy val chainedIC: InputCache[ChainedResolver] = InputCache.lzy(wrapIn)
   implicit lazy val resolverIC: InputCache[Resolver] =
-    unionInputCache[Resolver, ChainedResolver :+: JavaNet1Repository :+: MavenRepository :+: FileRepository :+: URLRepository :+: SshRepository :+: SftpRepository :+: RawRepository :+: HNil]
+    unionInputCache[Resolver, ChainedResolver :+: JavaNet1Repository :+: MavenRepository :+: MavenCache :+: FileRepository :+: URLRepository :+: SshRepository :+: SftpRepository :+: RawRepository :+: HNil]
   implicit def moduleIC: InputCache[ModuleID] = wrapIn
   implicitly[InputCache[Seq[Configuration]]]
 
@@ -172,6 +182,7 @@ object CacheIvy {
 
     implicit def artifactToHL = (a: Artifact) => a.name :+: a.`type` :+: a.extension :+: a.classifier :+: names(a.configurations) :+: a.url :+: a.extraAttributes :+: HNil
     implicit def exclusionToHL = (e: ExclusionRule) => e.organization :+: e.name :+: e.artifact :+: e.configurations :+: HNil
+    implicit def sbtExclusionToHL = (e: SbtExclusionRule) => e.organization :+: e.name :+: e.artifact :+: e.configurations :+: e.crossVersion :+: HNil
     implicit def crossToHL = (c: CrossVersion) => crossToInt(c) :+: HNil
 
     /*		implicit def deliverConfToHL = (p: DeliverConfiguration) => p.deliverIvyPattern :+: p.status :+: p.configurations :+: HNil
@@ -185,6 +196,7 @@ object CacheIvy {
   implicit def connectionIC: InputCache[SshConnection] = wrapIn
   implicit def artifactIC: InputCache[Artifact] = wrapIn
   implicit def exclusionIC: InputCache[ExclusionRule] = wrapIn
+  implicit def sbtExclusionIC: InputCache[SbtExclusionRule] = wrapIn
   implicit def crossVersionIC: InputCache[CrossVersion] = wrapIn
   /*	implicit def publishConfIC: InputCache[PublishConfiguration] = wrapIn
 	implicit def deliverConfIC: InputCache[DeliverConfiguration] = wrapIn*/

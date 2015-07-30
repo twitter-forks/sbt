@@ -24,8 +24,17 @@ final class PublishConfiguration(val ivyFile: Option[File], val resolverName: St
     this(ivyFile, resolverName, artifacts, checksums, logging, false)
 }
 
-final class UpdateConfiguration(val retrieve: Option[RetrieveConfiguration], val missingOk: Boolean, val logging: UpdateLogging.Value)
-final class RetrieveConfiguration(val retrieveDirectory: File, val outputPattern: String)
+final class UpdateConfiguration(val retrieve: Option[RetrieveConfiguration], val missingOk: Boolean, val logging: UpdateLogging.Value) {
+  private[sbt] def copy(
+    retrieve: Option[RetrieveConfiguration] = this.retrieve,
+    missingOk: Boolean = this.missingOk,
+    logging: UpdateLogging.Value = this.logging): UpdateConfiguration =
+    new UpdateConfiguration(retrieve, missingOk, logging)
+}
+final class RetrieveConfiguration(val retrieveDirectory: File, val outputPattern: String, val sync: Boolean, val configurationsToRetrieve: Option[Set[Configuration]]) {
+  def this(retrieveDirectory: File, outputPattern: String) = this(retrieveDirectory, outputPattern, false, None)
+  def this(retrieveDirectory: File, outputPattern: String, sync: Boolean) = this(retrieveDirectory, outputPattern, sync, None)
+}
 final case class MakePomConfiguration(file: File, moduleInfo: ModuleInfo, configurations: Option[Seq[Configuration]] = None, extra: NodeSeq = NodeSeq.Empty, process: XNode => XNode = n => n, filterRepositories: MavenRepository => Boolean = _ => true, allRepositories: Boolean, includeTypes: Set[String] = Set(Artifact.DefaultType, Artifact.PomType))
 // exclude is a map on a restricted ModuleID
 final case class GetClassifiersConfiguration(module: GetClassifiersModule, exclude: Map[ModuleID, Set[String]], configuration: UpdateConfiguration, ivyScala: Option[IvyScala])
@@ -44,9 +53,10 @@ object UnresolvedWarningConfiguration {
  * `Full` is the default and logs the most.
  * `DownloadOnly` only logs what is downloaded.
  * `Quiet` only displays errors.
+ * `Default` uses the current log level of `update` task.
  */
 object UpdateLogging extends Enumeration {
-  val Full, DownloadOnly, Quiet = Value
+  val Full, DownloadOnly, Quiet, Default = Value
 }
 
 object IvyActions {
@@ -125,9 +135,10 @@ object IvyActions {
     }
   private def crossVersionMap(moduleSettings: ModuleSettings): Option[String => String] =
     moduleSettings match {
-      case i: InlineConfiguration => CrossVersion(i.module, i.ivyScala)
-      case e: EmptyConfiguration  => CrossVersion(e.module, e.ivyScala)
-      case _                      => None
+      case i: InlineConfiguration             => CrossVersion(i.module, i.ivyScala)
+      case i: InlineConfigurationWithExcludes => CrossVersion(i.module, i.ivyScala)
+      case e: EmptyConfiguration              => CrossVersion(e.module, e.ivyScala)
+      case _                                  => None
     }
   def mapArtifacts(module: ModuleDescriptor, cross: Option[String => String], artifacts: Map[Artifact, File]): Seq[(IArtifact, File)] =
     {
@@ -158,20 +169,25 @@ object IvyActions {
       case (ivy, md, default) if module.owner.configuration.updateOptions.cachedResolution && depDir.isDefined =>
         ivy.getResolveEngine match {
           case x: CachedResolutionResolveEngine =>
+            val iw = IvySbt.inconsistentDuplicateWarning(md)
+            iw foreach { log.warn(_) }
             val resolveOptions = new ResolveOptions
             val resolveId = ResolveOptions.getDefaultResolveId(md)
             resolveOptions.setResolveId(resolveId)
+            resolveOptions.setLog(ivyLogLevel(configuration.logging))
             x.customResolve(md, configuration.missingOk, logicalClock, resolveOptions, depDir getOrElse { sys.error("dependency base directory is not specified") }, log) match {
               case Left(x) =>
                 Left(UnresolvedWarning(x, uwconfig))
               case Right(uReport) =>
                 configuration.retrieve match {
-                  case Some(rConf) => Right(retrieve(ivy, uReport, rConf))
+                  case Some(rConf) => Right(retrieve(log, ivy, uReport, rConf))
                   case None        => Right(uReport)
                 }
             }
         }
       case (ivy, md, default) =>
+        val iw = IvySbt.inconsistentDuplicateWarning(md)
+        iw foreach { log.warn(_) }
         val (report, err) = resolve(configuration.logging)(ivy, md, default)
         err match {
           case Some(x) if !configuration.missingOk =>
@@ -180,7 +196,7 @@ object IvyActions {
             val cachedDescriptor = ivy.getSettings.getResolutionCacheManager.getResolvedIvyFileInCache(md.getModuleRevisionId)
             val uReport = IvyRetrieve.updateReport(report, cachedDescriptor)
             configuration.retrieve match {
-              case Some(rConf) => Right(retrieve(ivy, uReport, rConf))
+              case Some(rConf) => Right(retrieve(log, ivy, uReport, rConf))
               case None        => Right(uReport)
             }
         }
@@ -208,7 +224,7 @@ object IvyActions {
       import config.{ configuration => c, ivyScala, module => mod }
       import mod.{ id, modules => deps }
       val base = restrictedCopy(id, true).copy(name = id.name + "$" + label)
-      val module = new ivySbt.Module(InlineConfiguration(base, ModuleInfo(base.name), deps).copy(ivyScala = ivyScala))
+      val module = new ivySbt.Module(InlineConfigurationWithExcludes(base, ModuleInfo(base.name), deps).copy(ivyScala = ivyScala))
       val report = updateEither(module, c, uwconfig, logicalClock, depDir, log) match {
         case Right(r) => r
         case Left(w) =>
@@ -226,11 +242,11 @@ object IvyActions {
     {
       import config.{ configuration => c, module => mod, _ }
       import mod.{ configurations => confs, _ }
-      assert(!classifiers.isEmpty, "classifiers cannot be empty")
+      assert(classifiers.nonEmpty, "classifiers cannot be empty")
       val baseModules = modules map { m => restrictedCopy(m, true) }
       val deps = baseModules.distinct flatMap classifiedArtifacts(classifiers, exclude)
       val base = restrictedCopy(id, true).copy(name = id.name + classifiers.mkString("$", "_", ""))
-      val module = new ivySbt.Module(InlineConfiguration(base, ModuleInfo(base.name), deps).copy(ivyScala = ivyScala, configurations = confs))
+      val module = new ivySbt.Module(InlineConfigurationWithExcludes(base, ModuleInfo(base.name), deps).copy(ivyScala = ivyScala, configurations = confs))
       val upConf = new UpdateConfiguration(c.retrieve, true, c.logging)
       updateEither(module, upConf, uwconfig, logicalClock, depDir, log) match {
         case Right(r) => r
@@ -279,20 +295,43 @@ object IvyActions {
         } else None
       (resolveReport, err)
     }
-  private def retrieve(ivy: Ivy, report: UpdateReport, config: RetrieveConfiguration): UpdateReport =
-    retrieve(ivy, report, config.retrieveDirectory, config.outputPattern)
+  private def retrieve(log: Logger, ivy: Ivy, report: UpdateReport, config: RetrieveConfiguration): UpdateReport =
+    retrieve(log, ivy, report, config.retrieveDirectory, config.outputPattern, config.sync, config.configurationsToRetrieve)
 
-  private def retrieve(ivy: Ivy, report: UpdateReport, base: File, pattern: String): UpdateReport =
+  private def retrieve(log: Logger, ivy: Ivy, report: UpdateReport, base: File, pattern: String, sync: Boolean, configurationsToRetrieve: Option[Set[Configuration]]): UpdateReport =
     {
+      val configurationNames = configurationsToRetrieve match {
+        case None          => None
+        case Some(configs) => Some(configs.map(_.name))
+      }
+      val existingFiles = PathFinder(base).***.get filterNot { _.isDirectory }
       val toCopy = new collection.mutable.HashSet[(File, File)]
       val retReport = report retrieve { (conf, mid, art, cached) =>
-        val to = retrieveTarget(conf, mid, art, base, pattern)
-        toCopy += ((cached, to))
-        to
+        configurationNames match {
+          case None                       => performRetrieve(conf, mid, art, base, pattern, cached, toCopy)
+          case Some(names) if names(conf) => performRetrieve(conf, mid, art, base, pattern, cached, toCopy)
+          case _                          => cached
+        }
       }
       IO.copy(toCopy)
+      val resolvedFiles = toCopy.map(_._2)
+      if (sync) {
+        val filesToDelete = existingFiles.filterNot(resolvedFiles.contains)
+        filesToDelete foreach { f =>
+          log.info(s"Deleting old dependency: ${f.getAbsolutePath}")
+          f.delete()
+        }
+      }
+
       retReport
     }
+
+  private def performRetrieve(conf: String, mid: ModuleID, art: Artifact, base: File, pattern: String, cached: File, toCopy: collection.mutable.HashSet[(File, File)]): File = {
+    val to = retrieveTarget(conf, mid, art, base, pattern)
+    toCopy += ((cached, to))
+    to
+  }
+
   private def retrieveTarget(conf: String, mid: ModuleID, art: Artifact, base: File, pattern: String): File =
     new File(base, substitute(conf, mid, art, pattern))
 
@@ -303,13 +342,14 @@ object IvyActions {
       IvyPatternHelper.substitute(pattern, mid.organization, mid.name, mid.revision, art.name, art.`type`, art.extension, conf, mextra, aextra)
     }
 
-  import UpdateLogging.{ Quiet, Full, DownloadOnly }
+  import UpdateLogging.{ Quiet, Full, DownloadOnly, Default }
   import LogOptions.{ LOG_QUIET, LOG_DEFAULT, LOG_DOWNLOAD_ONLY }
   private def ivyLogLevel(level: UpdateLogging.Value) =
     level match {
       case Quiet        => LOG_QUIET
       case DownloadOnly => LOG_DOWNLOAD_ONLY
       case Full         => LOG_DEFAULT
+      case Default      => LOG_DOWNLOAD_ONLY
     }
 
   def publish(module: ModuleDescriptor, artifacts: Seq[(IArtifact, File)], resolver: DependencyResolver, overwrite: Boolean): Unit =
@@ -375,16 +415,16 @@ object UnresolvedWarning {
       case _ => ""
     }
   implicit val unresolvedWarningLines: ShowLines[UnresolvedWarning] = ShowLines { a =>
-    val withExtra = a.resolveException.failed.filter(!_.extraDependencyAttributes.isEmpty)
+    val withExtra = a.resolveException.failed.filter(_.extraDependencyAttributes.nonEmpty)
     val buffer = mutable.ListBuffer[String]()
-    if (!withExtra.isEmpty) {
+    if (withExtra.nonEmpty) {
       buffer += "\n\tNote: Some unresolved dependencies have extra attributes.  Check that these dependencies exist with the requested attributes."
       withExtra foreach { id => buffer += "\t\t" + id }
     }
-    if (!a.failedPaths.isEmpty) {
+    if (a.failedPaths.nonEmpty) {
       buffer += "\n\tNote: Unresolved dependencies path:"
       a.failedPaths foreach { path =>
-        if (!path.isEmpty) {
+        if (path.nonEmpty) {
           val head = path.head
           buffer += "\t\t" + head._1.toString + sourcePosStr(head._2)
           path.tail foreach {

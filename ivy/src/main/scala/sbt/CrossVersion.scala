@@ -1,6 +1,7 @@
 package sbt
 
 import cross.CrossVersionUtil
+import sbt.serialization._
 
 final case class ScalaVersion(full: String, binary: String)
 
@@ -33,6 +34,42 @@ object CrossVersion {
    */
   final class Full(val remapVersion: String => String) extends CrossVersion {
     override def toString = "Full"
+  }
+
+  private val disabledTag = implicitly[FastTypeTag[Disabled.type]]
+  private val binaryTag = implicitly[FastTypeTag[Binary]]
+  private val fullTag = implicitly[FastTypeTag[Full]]
+  implicit val pickler: Pickler[CrossVersion] = new Pickler[CrossVersion] {
+    val tag = implicitly[FastTypeTag[CrossVersion]]
+    def pickle(a: CrossVersion, builder: PBuilder): Unit = {
+      builder.pushHints()
+      builder.hintTag(a match {
+        case Disabled  => disabledTag
+        case x: Binary => binaryTag
+        case x: Full   => fullTag
+      })
+      builder.beginEntry(a)
+      builder.endEntry()
+      builder.popHints()
+    }
+  }
+  implicit val unpickler: Unpickler[CrossVersion] = new Unpickler[CrossVersion] {
+    val tag = implicitly[FastTypeTag[CrossVersion]]
+    def unpickle(tpe: String, reader: PReader): Any = {
+      reader.pushHints()
+      reader.hintTag(tag)
+      val tpeStr = reader.beginEntry()
+      val tpe = scala.pickling.FastTypeTag(tpeStr)
+      // sys.error(tpe.toString)
+      val result = tpe match {
+        case t if t == disabledTag => Disabled
+        case t if t == binaryTag   => binary
+        case t if t == fullTag     => full
+      }
+      reader.endEntry()
+      reader.popHints()
+      result
+    }
   }
 
   /** Cross-versions a module with the full version (typically the full Scala version). */
@@ -95,6 +132,13 @@ object CrossVersion {
   @deprecated("Will be made private.", "0.13.1")
   def crossName(name: String, cross: String): String =
     name + "_" + cross
+
+  /** Cross-versions `exclude` according to its `crossVersion`. */
+  private[sbt] def substituteCross(exclude: SbtExclusionRule, is: Option[IvyScala]): SbtExclusionRule = {
+    val fopt: Option[String => String] =
+      is flatMap { i => CrossVersion(exclude.crossVersion, i.scalaFullVersion, i.scalaBinaryVersion) }
+    exclude.copy(name = applyCross(exclude.name, fopt))
+  }
 
   /** Cross-versions `a` according to cross-version function `cross`. */
   def substituteCross(a: Artifact, cross: Option[String => String]): Artifact =

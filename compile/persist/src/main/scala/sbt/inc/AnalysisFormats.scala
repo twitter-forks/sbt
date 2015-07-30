@@ -7,6 +7,7 @@ package inc
 import xsbti.api.{ Source, Compilation }
 import xsbti.{ Position, Problem, Severity }
 import xsbti.compile.{ CompileOrder, Output => APIOutput, SingleOutput, MultipleOutput }
+import xsbti.DependencyContext._
 import MultipleOutput.OutputGroup
 import java.io.File
 import java.net.URL
@@ -78,7 +79,13 @@ object AnalysisFormats {
   implicit val multipleOutputFormat: Format[MultipleOutput] =
     wrap[MultipleOutput, Array[OutputGroup]](
       (_.outputGroups),
-      { groups => new MultipleOutput { def outputGroups = groups } }
+      {
+        groups =>
+          new MultipleOutput {
+            def outputGroups = groups
+            override def toString = s"MultipleOutput($outputGroups)"
+          }
+      }
     )
   implicit val singleOutputFormat: Format[SingleOutput] =
     wrap[SingleOutput, File](
@@ -105,7 +112,9 @@ object AnalysisFormats {
           sourceDependencies.internal.all.isEmpty && sourceDependencies.external.all.isEmpty
         // we check direct dependencies only because publicInherited dependencies are subset of direct
         assert(isEmpty(direct), "Direct dependencies are not empty but `nameHashing` flag is enabled.")
-        Relations.make(srcProd, binaryDep, memberRef, inheritance, classes, names)
+        val internalDependencies = InternalDependencies(Map(DependencyByMemberRef -> memberRef.internal, DependencyByInheritance -> inheritance.internal))
+        val externalDependencies = ExternalDependencies(Map(DependencyByMemberRef -> memberRef.external, DependencyByInheritance -> inheritance.external))
+        Relations.make(srcProd, binaryDep, internalDependencies, externalDependencies, classes, names)
       } else {
         def isEmpty(sourceDependencies: SourceDependencies): Boolean =
           sourceDependencies.internal.all.isEmpty && sourceDependencies.external.all.isEmpty
