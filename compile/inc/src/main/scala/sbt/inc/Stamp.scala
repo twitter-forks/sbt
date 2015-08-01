@@ -4,8 +4,10 @@
 package sbt
 package inc
 
-import java.io.{ File, IOException }
+import java.io.{ File, FileNotFoundException, IOException }
 import java.net.URL
+import java.util.jar.JarFile
+import scala.collection.JavaConverters._
 import Stamp.getStamp
 import scala.util.matching.Regex
 
@@ -97,19 +99,7 @@ object Stamp {
 
   val hash = (f: File) => tryStamp(new Hash(Hash(f)))
   val lastModifiedFile = (f: File) => tryStamp(new LastModified(f.lastModified))
-  val lastModifiedURL = (u: URL) => tryStamp {
-    // FIXME: XXX: these should be cached per-jar on a lookup-round basis
-    val lastModified =
-      u.getProtocol match {
-        case "jar" =>
-          u.openConnection.getLastModified
-        case "file" =>
-          IO.toFile(u).lastModified
-        case prot =>
-          throw new AssertionError("Protocol ${prot} not supported for last modified time lookups.")
-      }
-    new LastModified(lastModified)
-  }
+
   val exists = (f: File) => tryStamp(if (f.exists) present else notPresent)
 
   def tryStamp(g: => Stamp): Stamp = try { g } catch { case i: IOException => notPresent }
@@ -127,7 +117,7 @@ object Stamps {
    * stamp is calculated separately on demand.
    * The stamp for a product is always recalculated.
    */
-  def initial(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: URL => Stamp): ReadStamps = new InitialStamps(prodStamp, srcStamp, binStamp)
+  def initial(): ReadStamps = new InitialStamps()
 
   val empty: Stamps = apply(Map.empty, Map.empty, Map.empty, Map.empty)
 
@@ -188,13 +178,48 @@ private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stam
     "Stamps for: %d products, %d sources, %d binaries, %d classNames".format(products.size, sources.size, binaries.size, classNames.size)
 }
 
-private class InitialStamps(prodStamp: URL => Stamp, srcStamp: File => Stamp, binStamp: URL => Stamp) extends ReadStamps {
-  import collection.mutable.{ HashMap, Map }
-  // cached stamps for files that do not change during compilation
-  private val sources: Map[File, Stamp] = new HashMap
-  private val binaries: Map[URL, Stamp] = new HashMap
+/**
+ * Stamps for inputs; once computed, these are cached and will never change.
+ *
+ * TODO: Check/enforce the assumption that InitialStamps will never be used in a position
+ * where inputs have changed.
+ *
+ * In particular, this class caches Stamps for ALL files inside any jars
+ * that are encountered.
+ */
+private class InitialStamps extends ReadStamps {
+  import collection.mutable
+  // cached stamps for files
+  private val files = mutable.Map[File, Stamp]()
+  // map from jar path to map of internal classfile to Stamp
+  private val jars = mutable.Map[String, Map[String, Stamp]]()
 
-  def product(prod: URL): Stamp = prodStamp(prod)
-  def internalSource(src: File): Stamp = synchronized { sources.getOrElseUpdate(src, srcStamp(src)) }
-  def binary(bin: URL): Stamp = synchronized { binaries.getOrElseUpdate(bin, binStamp(bin)) }
+  def product(prod: URL): Stamp = lastModified(prod)
+  def internalSource(src: File): Stamp = lastModified(src)
+  def binary(bin: URL): Stamp = lastModified(bin)
+
+  private def lastModified(f: File): Stamp = files.synchronized {
+    files.getOrElseUpdate(f, Stamp.lastModifiedFile(f))
+  }
+
+  private def lastModified(u: URL): Stamp = Stamp.tryStamp {
+    IO.classfilePathFromURL(u) match {
+      case Left(classfile) =>
+        lastModified(new File(classfile))
+      case Right(jarPath, classfile) =>
+        lastModified(jarPath, classfile)
+    }
+  }
+
+  private def lastModified(jarPath: String, classFile: String): Stamp =
+    jars.synchronized {
+      jars.getOrElseUpdate(jarPath, {
+        val jarFile = new JarFile(jarPath)
+        jarFile.entries.asScala.map { jarEntry =>
+          jarEntry.getName -> new LastModified(jarEntry.getTime)
+        }.toMap
+      })
+    }.getOrElse(classFile, {
+      throw new FileNotFoundException(s"Could not locate ${classFile} in ${jarPath}")
+    })
 }

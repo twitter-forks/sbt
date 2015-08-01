@@ -27,8 +27,9 @@ object IO {
   val temporaryDirectory = new File(System.getProperty("java.io.tmpdir"))
   /** The size of the byte or char buffer used in various methods.*/
   private val BufferSize = 8192
-  /** File scheme name */
+  /** Scheme names */
   private[sbt] val FileScheme = "file"
+  private[sbt] val JarScheme = "jar"
 
   /** The newline string for this system, as obtained by the line.separator system property. */
   val Newline = System.getProperty("line.separator")
@@ -81,11 +82,28 @@ object IO {
   def urlAsFile(url: URL): Option[File] =
     url.getProtocol match {
       case FileScheme => Some(toFile(url))
-      case "jar" =>
+      case JarScheme =>
         val path = url.getPath
         val end = path.indexOf('!')
         Some(uriToFile(if (end == -1) path else path.substring(0, end)))
       case _ => None
+    }
+
+  /**
+   * @return Either a string path for a loose classfile, or a pair of a jar path and
+   * a classfile path located within the jar.
+   */
+  def classfilePathFromURL(url: URL): Either[String, (String, String)] =
+    url.getProtocol match {
+      case FileScheme =>
+        assert(url.getPath.endsWith(".class"), s"URL $url does not represent a classfile.")
+        Left(url.getPath)
+      case JarScheme =>
+        val path = url.getPath
+        val end = path.indexOf("!")
+        Right(path.substring(0, end) -> path.substring(end + 1))
+      case prot =>
+        throw new AssertionError(s"Protocol $prot not supported.")
     }
 
   private[this] def uriToFile(uriString: String): File =

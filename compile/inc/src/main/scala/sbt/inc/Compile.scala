@@ -48,7 +48,7 @@ object IncrementalCompile {
     output: Output, log: Logger,
     options: IncOptions): (Boolean, Analysis) =
     {
-      val current = Stamps.initial(Stamp.lastModifiedURL, Stamp.hash, Stamp.lastModifiedURL)
+      val current = Stamps.initial()
       val internalMap = (f: URL) => previous.relations.produced(f).headOption
       val externalAPI = getExternalAPI(entry, forEntry)
       try {
