@@ -36,42 +36,53 @@ object JavaCompilerSpec extends Specification {
     "safe" singleton type names                                     ${analyzeStaticDifference("float", "0.123456789f", "0.123456789f")}
   """
 
-  def docWorks(compiler: JavaTools) = IO.withTemporaryDirectory { out =>
-    val (result, problems) = doc(compiler, Seq(knownSampleGoodFile), Seq("-d", out.getAbsolutePath))
-    val compiled = result must beTrue
-    val indexExists = (new File(out, "index.html")).exists must beTrue setMessage ("index.html does not exist!")
-    val classExists = (new File(out, "good.html")).exists must beTrue setMessage ("good.html does not exist!")
-    compiled and classExists and indexExists
-  }
+  def docWorks(compiler: JavaTools) =
+    doc(compiler)(sampleGood) { (out, result, problems) =>
+      val compiled = result must beTrue
+      val indexExists = (new File(out, "index.html")).exists must beTrue setMessage ("index.html does not exist!")
+      val classExists = (new File(out, "good.html")).exists must beTrue setMessage ("good.html does not exist!")
+      compiled and classExists and indexExists
+    }
 
-  def works(compiler: JavaTools) = IO.withTemporaryDirectory { out =>
-    val (result, problems) = compile(compiler, Seq(knownSampleGoodFile), Seq("-deprecation", "-d", out.getAbsolutePath))
-    val compiled = result must beTrue
-    val classExists = (new File(out, "good.class")).exists must beTrue
-    val cl = new URLClassLoader(Array(out.toURI.toURL))
-    val clazzz = cl.loadClass("good")
-    val mthd = clazzz.getDeclaredMethod("test")
-    val testResult = mthd.invoke(null)
-    val canRun = mthd.invoke(null) must equalTo("Hello")
-    compiled and classExists and canRun
-  }
+  def works(compiler: JavaTools) =
+    compile(compiler, "-deprecation")(sampleGood) { (out, result, problems) =>
+      val compiled = result must beTrue
+      val classExists = (new File(out, "good.class")).exists must beTrue
+      val cl = new URLClassLoader(Array(out.toURI.toURL))
+      val clazzz = cl.loadClass("good")
+      val mthd = clazzz.getDeclaredMethod("test")
+      val testResult = mthd.invoke(null)
+      val canRun = mthd.invoke(null) must equalTo("Hello")
+      compiled and classExists and canRun
+    }
 
-  def findsErrors(compiler: JavaTools) = {
-    val (result, problems) = compile(compiler, Seq(knownSampleErrorFile), Seq("-deprecation"))
-    val errored = result must beFalse
-    val foundErrorAndWarning = problems must haveSize(5)
-    val importWarn = warnOnLine(lineno = 1, lineContent = Some("import java.rmi.RMISecurityException;"))
-    val hasKnownErrors = problems.toSeq must contain(importWarn, errorOnLine(3), warnOnLine(7))
-    errored and foundErrorAndWarning and hasKnownErrors
-  }
+  def findsErrors(compiler: JavaTools) =
+    compile(compiler, "-deprecation")(sampleError) { (_, result, problems) =>
+      val errored = result must beFalse
+      val foundErrorAndWarning = problems must haveSize(5)
+      val importWarn = warnOnLine(lineno = 1, lineContent = Some("import java.rmi.RMISecurityException;"))
+      val hasKnownErrors = problems.toSeq must contain(importWarn, errorOnLine(3), warnOnLine(7))
+      errored and foundErrorAndWarning and hasKnownErrors
+    }
 
-  def findsDocErrors(compiler: JavaTools) = IO.withTemporaryDirectory { out =>
-    val (result, problems) = doc(compiler, Seq(knownSampleErrorFile), Seq("-d", out.getAbsolutePath))
-    val errored = result must beTrue
-    val foundErrorAndWarning = problems must haveSize(2)
-    val hasKnownErrors = problems.toSeq must contain(errorOnLine(3), errorOnLine(4))
-    errored and foundErrorAndWarning and hasKnownErrors
-  }
+  def findsDocErrors(compiler: JavaTools) =
+    doc(compiler)("test1.java" ->
+      """import java.rmi.RMISecurityException;
+        |
+        |public class Test {
+        |    public NotFound foo() { return 5; }
+        |
+        |    public String warning() {
+        |        throw new RMISecurityException("O NOES");
+        |    }
+        |}
+        |""".stripMargin
+    ) { (_, result, problems) =>
+      val errored = result must beTrue
+      val foundErrorAndWarning = problems must haveSize(2)
+      val hasKnownErrors = problems.toSeq must contain(errorOnLine(3), errorOnLine(4))
+      errored and foundErrorAndWarning and hasKnownErrors
+    }
 
   /**
    * Compiles with the given constant values, and confirms that if the strings mismatch, then the
@@ -81,23 +92,22 @@ object JavaCompilerSpec extends Specification {
     analyzeStaticDifference(typeName, left, typeName, right)
 
   def analyzeStaticDifference(leftType: String, left: String, rightType: String, right: String): MatchResult[Boolean] = {
-    def compileWithPrimitive(templateType: String, templateValue: String) =
-      IO.withTemporaryDirectory { out =>
-        // copy the input file to a temporary location and change the templateValue
-        val input = new File(out, hasStaticFinalFile.getName())
-        IO.writeLines(
-          input,
-          IO.readLines(hasStaticFinalFile).map { line =>
-            line.replace("TYPE", templateType).replace("VALUE", templateValue)
-          }
-        )
+    def compileWithPrimitive(templateType: String, templateValue: String) = {
+      // template the appropriate type/value into a synthetic file
+      val hasStaticFinal =
+        "hasstaticfinal.java" ->
+          s"""public class hasstaticfinal {
+             |    public static final $templateType HELLO = $templateValue;
+             |}
+             |""".stripMargin
 
-        // then compile it
-        val (result, problems) = compile(local, Seq(input), Seq("-d", out.getAbsolutePath))
+      // then compile it
+      compile(local)(hasStaticFinal) { (out, result, problems) =>
         val origCompiled = result must beTrue
         val clazzz = new URLClassLoader(Array(out.toURI.toURL)).loadClass("hasstaticfinal")
         (origCompiled, ClassToAPI(Seq(clazzz)))
       }
+    }
 
     // compile with two different primitive values, and confirm that they match if their
     // values match
@@ -111,7 +121,7 @@ object JavaCompilerSpec extends Specification {
   def lineMatches(p: Problem, lineno: Int, lineContent: Option[String] = None): Boolean = {
     def lineContentCheck =
       lineContent match {
-        case Some(content) => content.equalsIgnoreCase(p.position.lineContent())
+        case Some(content) => content.equals(p.position.lineContent())
         case _             => true
       }
     def lineNumberCheck = p.position.line.isDefined && (p.position.line.get == lineno)
@@ -133,38 +143,70 @@ object JavaCompilerSpec extends Specification {
     })
 
   def forkSameAsLocal = {
-    val (fresult, fproblems) = compile(forked, Seq(knownSampleErrorFile), Seq("-deprecation"))
-    val (lresult, lproblems) = compile(local, Seq(knownSampleErrorFile), Seq("-deprecation"))
-    val sameResult = fresult must beEqualTo(lresult)
+    compile(forked, "-deprecation")(sampleError) { (_, fresult, fproblems) =>
+      compile(local, "-deprecation")(sampleError) { (_, lresult, lproblems) =>
+        val sameResult = fresult must beEqualTo(lresult)
 
-    val pResults = for ((f, l) <- fproblems zip lproblems) yield {
-      val sourceIsSame =
-        if (f.position.sourcePath.isDefined) (f.position.sourcePath.get must beEqualTo(l.position.sourcePath.get)).setMessage(s"${f.position} != ${l.position}")
-        else l.position.sourcePath.isDefined must beFalse
-      val lineIsSame =
-        if (f.position.line.isDefined) f.position.line.get must beEqualTo(l.position.line.get)
-        else l.position.line.isDefined must beFalse
-      val severityIsSame = f.severity must beEqualTo(l.severity)
-      // TODO - We should check to see if the levenshtein distance of the messages is close...
-      sourceIsSame and lineIsSame and severityIsSame
+        val pResults = for ((f, l) <- fproblems zip lproblems) yield {
+          val sourceIsSame =
+            if (f.position.sourcePath.isDefined) {
+              def fileName(filePath: String): String = filePath.split("/").last
+              val fSourceName = fileName(f.position.sourcePath.get)
+              val lSourceName = fileName(l.position.sourcePath.get)
+              (fSourceName must beEqualTo(lSourceName)).setMessage(s"${f.position} != ${l.position}")
+            } else {
+              l.position.sourcePath.isDefined must beFalse
+            }
+          val lineIsSame =
+            if (f.position.line.isDefined) f.position.line.get must beEqualTo(l.position.line.get)
+            else l.position.line.isDefined must beFalse
+          val severityIsSame = f.severity must beEqualTo(l.severity)
+          // TODO - We should check to see if the levenshtein distance of the messages is close...
+          sourceIsSame and lineIsSame and severityIsSame
+        }
+        val errorsAreTheSame = pResults.reduce(_ and _)
+        sameResult and errorsAreTheSame
+      }
     }
-    val errorsAreTheSame = pResults.reduce(_ and _)
-    sameResult and errorsAreTheSame
   }
 
-  def compile(c: JavaTools, sources: Seq[File], args: Seq[String]): (Boolean, Array[Problem]) = {
+  /**
+   * Because some `Problem` implementations lazily parse the file content, this method takes a
+   * body that is executed while the temporarily-written sources still exist.
+   */
+  def compile[T](c: JavaTools, extraArgs: String*)(sources: (String, String)*)(body: (File, Boolean, Array[Problem]) => T): T = {
     val log = Logger.Null
     val reporter = new LoggerReporter(10, log)
-    val result = c.compile(sources, args)(log, reporter)
-    (result, reporter.problems)
+    IO.withTemporaryDirectory { out =>
+      withSources(sources) { sourceFiles =>
+        val result = c.compile(sourceFiles, Seq("-d", out.getAbsolutePath) ++ extraArgs)(log, reporter)
+        body(out, result, reporter.problems)
+      }
+    }
   }
 
-  def doc(c: JavaTools, sources: Seq[File], args: Seq[String]): (Boolean, Array[Problem]) = {
+  def doc[T](c: JavaTools, extraArgs: String*)(sources: (String, String)*)(body: (File, Boolean, Array[Problem]) => T): T = {
     val log = Logger.Null
     val reporter = new LoggerReporter(10, log)
-    val result = c.doc(sources, args)(log, reporter)
-    (result, reporter.problems)
+    IO.withTemporaryDirectory { out =>
+      withSources(sources) { sourceFiles =>
+        val result = c.doc(sourceFiles, Seq("-d", out.getAbsolutePath) ++ extraArgs)(log, reporter)
+        body(out, result, reporter.problems)
+      }
+    }
   }
+
+  private def withSources[T](sources: Seq[(String, String)])(body: Seq[File] => T): T =
+    IO.withTemporaryDirectory { sourceDir =>
+      body(
+        sources.map {
+          case (sourceFilename, sourceContent) =>
+            val sourceFile = new File(sourceDir, sourceFilename)
+            IO.write(sourceFile, sourceContent)
+            sourceFile
+        }
+      )
+    }
 
   // TODO - Create one with known JAVA HOME.
   def forked = JavaTools(JavaCompiler.fork(), Javadoc.fork())
@@ -178,13 +220,28 @@ object JavaCompilerSpec extends Specification {
   def cwd =
     (new File(new File(".").getAbsolutePath)).getCanonicalFile
 
-  def knownSampleErrorFile =
-    new java.io.File(getClass.getResource("test1.java").toURI)
+  val sampleError =
+    "test1.java" ->
+      """import java.rmi.RMISecurityException;
+        |
+        |public class Test {
+        |    public NotFound foo() { return 5; }
+        |
+        |    public String warning() {
+        |        throw new RMISecurityException("O NOES");
+        |    }
+        |}
+        |""".stripMargin
 
-  def knownSampleGoodFile =
-    new java.io.File(getClass.getResource("good.java").toURI)
-
-  def hasStaticFinalFile =
-    new java.io.File(getClass.getResource("hasstaticfinal.java").toURI)
-
+  // NB: two blank lines before content
+  val sampleGood =
+    "good.java" ->
+      """
+        |
+        |public class good {
+        |    public static String test() {
+        |        return "Hello";
+        |    }
+        |}
+        |""".stripMargin
 }
