@@ -61,7 +61,9 @@ object JavaCompilerSpec extends Specification {
       val errored = result must beFalse
       val foundErrorAndWarning = problems must haveSize(5)
       val importWarn = warnOnLine(lineno = 1, lineContent = Some("import java.rmi.RMISecurityException;"))
-      val hasKnownErrors = problems.toSeq must contain(importWarn, errorOnLine(3), warnOnLine(7))
+      val hasKnownErrors = problems.toSeq must {
+        contain(importWarn) and contain(errorOnLine(5)) and contain(warnOnLine(9))
+      }
       errored and foundErrorAndWarning and hasKnownErrors
     }
 
@@ -120,11 +122,13 @@ object JavaCompilerSpec extends Specification {
 
   def lineMatches(p: Problem, lineno: Int, lineContent: Option[String] = None): Boolean = {
     def lineContentCheck =
-      lineContent match {
-        case Some(content) => content.equals(p.position.lineContent())
-        case _             => true
-      }
+      lineContent.map { expected =>
+        val actual = p.position.lineContent().lines.toSeq.head
+        //println(s">>> equal? ${expected.equals(actual)}: `$expected` vs `$actual`")
+        actual.equals(expected)
+      }.getOrElse(true)
     def lineNumberCheck = p.position.line.isDefined && (p.position.line.get == lineno)
+    //println(s">>> equal? ${p.position.line.get == lineno}: `$lineno` vs `${p.position.line.get}`")
     lineNumberCheck && lineContentCheck
   }
 
@@ -136,10 +140,13 @@ object JavaCompilerSpec extends Specification {
       case p if lineMatches(p, lineno, lineContent) && isError(p) => ok
       case _ => ko
     })
-  def warnOnLine(lineno: Int, lineContent: Option[String] = None) =
+  def warnOnLine(lineno: Int, lineContent: Option[String] = None): org.specs2.matcher.Matcher[Problem] =
     beLike[Problem]({
-      case p if lineMatches(p, lineno, lineContent) && isWarn(p) => ok
-      case _ => ko
+      case p if lineMatches(p, lineno, lineContent) && isWarn(p) =>
+        //println(s">>> found content $lineContent on lineno $lineno")
+        ok
+      case _ =>
+        ko
     })
 
   def forkSameAsLocal = {
@@ -222,7 +229,9 @@ object JavaCompilerSpec extends Specification {
 
   val sampleError =
     "test1.java" ->
-      """import java.rmi.RMISecurityException;
+      """package test;
+        |
+        |import java.rmi.RMISecurityException;
         |
         |public class Test {
         |    public NotFound foo() { return 5; }
