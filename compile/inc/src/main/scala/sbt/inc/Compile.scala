@@ -157,12 +157,6 @@ private final class AnalysisCallback(internalMap: ClassRef => Option[File], exte
         }
     }
 
-  @deprecated("Use `binaryDependency(File, String, File, DependencyContext)`.", "0.13.8")
-  def binaryDependency(classFile: ClassRef, name: String, source: File, inherited: Boolean) = {
-    val context = if (inherited) DependencyByInheritance else DependencyByMemberRef
-    binaryDependency(classFile, name, source, context)
-  }
-
   private[this] def externalDependency(classFile: ClassRef, name: String, source: File, context: DependencyContext): Unit =
     externalAPI(classFile, name) match {
       case Some(api) =>
