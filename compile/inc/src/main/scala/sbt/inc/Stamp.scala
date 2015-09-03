@@ -203,10 +203,10 @@ private class InitialStamps extends ReadStamps {
   }
 
   private def lastModified(u: ClassRef): Stamp = Stamp.tryStamp {
-    IO.classfilePathFromClassRef(u) match {
-      case Left(classfile) =>
+    u match {
+      case ClassRef.Loose(classfile) =>
         lastModified(new File(classfile))
-      case Right((jarPath, classfile)) =>
+      case ClassRef.Jarred(jarPath, classfile) =>
         lastModified(jarPath, classfile)
     }
   }

@@ -10,7 +10,7 @@ import java.util.zip.{ ZipException, ZipFile }
 import Function.const
 
 object Locate {
-  type DefinesClass = File => String => Boolean
+  type DefinesClass = File => String => Option[ClassRef]
 
   /**
    * Right(src) provides the value for the found class
@@ -35,23 +35,15 @@ object Locate {
   /**
    * Returns a function that searches the provided class path for
    * a class name and returns the entry that defines that class.
-   *
-   * TODO: refactor in terms of native ClassRef use.
    */
   def entry(classpath: Seq[File], f: DefinesClass): String => Option[ClassRef] = {
     val entries =
-      classpath.toStream.map { file =>
-        (file.toURI.toURL, f(file))
-      }
+      classpath.map { file =>
+        (file, f(file))
+      }.toStream
     def fn(className: String): Option[ClassRef] =
-      entries.collect {
-        case (url, defines) if defines(className) =>
-          url.getProtocol match {
-            case "jar" =>
-              ClassRef.Jarred(url, fromClassName(className))
-            case _ =>
-              url
-          }
+      entries.flatMap {
+        case (file, defines) => defines(className)
       }.headOption
     fn
   }
