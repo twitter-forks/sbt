@@ -7,9 +7,9 @@ package inc
 import xsbt.api.{ NameChanges, SameAPI, TopLevel }
 import annotation.tailrec
 import xsbti.api.{ Compilation, Source }
+import xsbti.ClassRef
 import xsbti.compile.DependencyChanges
 import java.io.File
-import java.net.URL
 
 /**
  * Helper class to run incremental compilation algorithm.

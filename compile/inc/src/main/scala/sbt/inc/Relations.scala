@@ -9,6 +9,7 @@ import java.net.URL
 import Relations.Source
 import Relations.SourceDependencies
 import xsbti.api.{ Source => APISource }
+import xsbti.ClassRef
 import xsbti.DependencyContext
 import xsbti.DependencyContext._
 

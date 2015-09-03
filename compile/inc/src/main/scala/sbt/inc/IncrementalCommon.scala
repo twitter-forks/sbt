@@ -2,10 +2,10 @@ package sbt
 package inc
 
 import scala.annotation.tailrec
+import xsbti.ClassRef
 import xsbti.compile.DependencyChanges
 import xsbti.api.{ Compilation, Source }
 import java.io.File
-import java.net.URL
 
 private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) {
 
@@ -301,7 +301,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
             }
           }
 
-        analysis(IO.asFile(dependsOn)).isEmpty &&
+        analysis(dependsOn.containingFile).isEmpty &&
           (if (skipClasspathLookup) urlModified(dependsOn, dependsOn) else dependencyModified(dependsOn))
       }
 
@@ -310,7 +310,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       orEmpty(
         for {
           e <- entry(className)
-          analysis <- forEntry(IO.asFile(e))
+          analysis <- forEntry(e.containingFile)
           src <- analysis.relations.definesClass(className).headOption
         } yield analysis.apis.internalAPI(src)
       )

@@ -3,12 +3,10 @@ package sbt.inc
 import sbt.IO
 import java.io.File
 
-/**
- * Represents a classfile on disk, which may be either loose in a directory, or inside a jar.
- */
-sealed trait ClassRef
+case class ClassRefLoose(classFile: File) extends xsbti.ClassRefLoose {
+  def containingFile = classFile
+}
 
-object ClassRef {
-  case class Loose(file: File) extends ClassRef
-  case class Jarred(jarFile: File, entry: String) extends ClassRef
+case class ClassRefJarred(jarFile: File, classFile: String) extends xsbti.ClassRefJarred {
+  def containingFile = jarFile
 }

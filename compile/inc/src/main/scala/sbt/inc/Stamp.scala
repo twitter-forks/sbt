@@ -5,7 +5,7 @@ package sbt
 package inc
 
 import java.io.{ File, FileNotFoundException, IOException }
-import java.net.URL
+import xsbti.ClassRef
 import java.util.jar.JarFile
 import scala.collection.JavaConverters._
 import Stamp.getStamp
@@ -192,7 +192,7 @@ private class InitialStamps extends ReadStamps {
   // cached stamps for files
   private val files = mutable.Map[File, Stamp]()
   // map from jar path to map of internal classfile to Stamp
-  private val jars = mutable.Map[String, Map[String, Stamp]]()
+  private val jars = mutable.Map[File, Map[String, Stamp]]()
 
   def product(prod: ClassRef): Stamp = lastModified(prod)
   def internalSource(src: File): Stamp = lastModified(src)
@@ -204,22 +204,21 @@ private class InitialStamps extends ReadStamps {
 
   private def lastModified(u: ClassRef): Stamp = Stamp.tryStamp {
     u match {
-      case ClassRef.Loose(classfile) =>
-        lastModified(new File(classfile))
-      case ClassRef.Jarred(jarPath, classfile) =>
-        lastModified(jarPath, classfile)
+      case ClassRefLoose(classfile) =>
+        lastModified(classfile)
+      case ClassRefJarred(jarFile, classfile) =>
+        lastModified(jarFile, classfile)
     }
   }
 
-  private def lastModified(jarPath: String, classFile: String): Stamp =
+  private def lastModified(jarFile: File, classFile: String): Stamp =
     jars.synchronized {
-      jars.getOrElseUpdate(jarPath, {
-        val jarFile = new JarFile(jarPath)
-        jarFile.entries.asScala.map { jarEntry =>
+      jars.getOrElseUpdate(jarFile, {
+        new JarFile(jarFile).entries.asScala.map { jarEntry =>
           jarEntry.getName -> new LastModified(jarEntry.getTime)
         }.toMap
       })
     }.getOrElse(classFile, {
-      throw new FileNotFoundException(s"Could not locate ${classFile} in ${jarPath}")
+      throw new FileNotFoundException(s"Could not locate ${classFile} in ${jarFile}")
     })
 }

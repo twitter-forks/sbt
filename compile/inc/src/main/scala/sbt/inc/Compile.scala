@@ -9,8 +9,8 @@ import xsbti.compile.{ DependencyChanges, Output, SingleOutput, MultipleOutput }
 import xsbti.{ Position, Problem, Severity }
 import Logger.{ m2o, problem }
 import java.io.File
-import java.net.URL
 import xsbti.api.Definition
+import xsbti.ClassRef
 import xsbti.DependencyContext
 import xsbti.DependencyContext.{ DependencyByInheritance, DependencyByMemberRef }
 
@@ -69,8 +69,10 @@ object IncrementalCompile {
     }
   def getExternalAPI(entry: String => Option[ClassRef], forEntry: File => Option[Analysis]): (ClassRef, String) => Option[Source] =
     (file: ClassRef, className: String) =>
-      entry(className) flatMap { defines =>
-        forEntry(IO.asFile(defines)) flatMap { analysis =>
+      entry(className) flatMap { ref =>
+        // TODO: `forEntry` accepts either a jar file or a loose classfile; should probably accept only
+        // the actual classpath entry
+        forEntry(ref.containingFile) flatMap { analysis =>
           analysis.relations.definesClass(className).headOption flatMap { src =>
             analysis.apis.internal get src
           }
@@ -139,6 +141,12 @@ private final class AnalysisCallback(internalMap: ClassRef => Option[File], exte
   private[this] def externalSourceDependency(sourceFile: File, dependsOn: String, source: Source, context: DependencyContext) = {
     val dependency = ExternalDependency(sourceFile, dependsOn, source, context)
     add(extSrcDeps, sourceFile, dependency)
+  }
+
+  @deprecated("Use `binaryDependency(File, String, File, DependencyContext)`.", "0.13.8")
+  def binaryDependency(classFile: ClassRef, name: String, source: File, inherited: Boolean) = {
+    val context = if (inherited) DependencyByInheritance else DependencyByMemberRef
+    binaryDependency(classFile, name, source, context)
   }
 
   def binaryDependency(classFile: ClassRef, name: String, source: File, context: DependencyContext) =

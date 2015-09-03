@@ -4,9 +4,9 @@
 package sbt
 package inc
 
-import java.io.File
-import java.util.zip.{ ZipException, ZipFile }
-import Function.const
+import xsbti.ClassRef
+import java.io.{ IOException, File }
+import java.util.jar.JarFile
 
 object Locate {
   type DefinesClass = File => String => Option[ClassRef]
@@ -60,22 +60,19 @@ object Locate {
     else if (entry.exists && classpath.ClasspathUtilities.isArchive(entry, contentFallback = true))
       jarDefinesClass(entry)
     else
-      const(None)
+      Function.const(None)
 
-  def jarDefinesClass(jarEntry: File): String => Option[ClassRef.Jarred] =
+  def jarDefinesClass(jarFile: File): String => Option[ClassRefJarred] =
     {
-      import collection.JavaConversions._
-      val jar = try { new ZipFile(jarEntry, ZipFile.OPEN_READ) } catch {
-        // ZipException doesn't include the file name :(
-        case e: ZipException => throw new RuntimeException("Error opening zip file: " + jarEntry.getName, e)
-      }
-      val entries: Map[String, ClassRef.Jarred] =
+      import collection.JavaConverters._
+      val entries: Map[String, ClassRefJarred] =
         try {
-          jar.entries.map { e =>
-            toClassName(e.getName, '/') -> ClassRef.Jarred(jarEntry, e.getName)
+          new JarFile(jarFile).entries.asScala.map { e =>
+            toClassName(e.getName, '/') -> ClassRefJarred(jarFile, e.getName)
           }.toMap
-        } finally {
-          jar.close()
+        } catch {
+          case e: IOException =>
+            throw new RuntimeException("Error indexing zip file: " + jarFile, e)
         }
       entries.get _
     }
@@ -88,10 +85,10 @@ object Locate {
 
   val ClassExt = ".class"
 
-  def directoryDefinesClass(entry: File): String => Option[ClassRef.Loose] = { className =>
+  def directoryDefinesClass(entry: File): String => Option[ClassRefLoose] = { className =>
     val path = new File(entry, fromClassName(className))
     if (path.isFile)
-      Some(ClassRef.Loose(path))
+      Some(ClassRefLoose(path))
     else
       None
   }

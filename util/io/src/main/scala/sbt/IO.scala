@@ -78,7 +78,6 @@ object IO {
     catch { case _: URISyntaxException => new File(url.getPath) }
 
   /** Converts the given URL to a File.  If the URL is for an entry in a jar, the File for the jar is returned. */
-  def asFile(url: URL): File = urlAsFile(url) getOrElse sys.error("URL is not a file: " + url)
   def urlAsFile(url: URL): Option[File] =
     url.getProtocol match {
       case FileScheme => Some(toFile(url))

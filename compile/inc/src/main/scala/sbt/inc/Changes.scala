@@ -6,9 +6,9 @@ package inc
 
 import xsbt.api.NameChanges
 import java.io.File
-import java.net.URL
 import xsbti.api.{ _internalOnly_NameHashes => NameHashes }
 import xsbti.api.{ _internalOnly_NameHash => NameHash }
+import xsbti.ClassRef
 
 final case class InitialChanges(internalSrc: Changes[File], removedProducts: Set[ClassRef], binaryDeps: Set[ClassRef], external: APIChanges[String])
 final class APIChanges[T](val apiChanges: Iterable[APIChange[T]]) {

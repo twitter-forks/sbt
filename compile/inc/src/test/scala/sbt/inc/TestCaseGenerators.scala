@@ -9,7 +9,7 @@ import Gen._
 
 import sbt.Relation
 import xsbti.api._
-import xsbti.SafeLazy
+import xsbti.{ ClassRef, SafeLazy }
 import xsbti.DependencyContext._
 
 /**
@@ -49,20 +49,24 @@ object TestCaseGenerators {
     cs <- listOfN(n - 1, alphaNumChar)
   } yield (c :: cs).mkString
 
-  def genFile(suffix: String = ""): Gen[File] = for {
+  def genPath(suffix: String = ""): Gen[String] = for {
     n <- choose(2, maxPathLen) // Paths have at least 2 segments.
     path <- listOfN(n, genFilePathSegment)
-  } yield new File(path.mkString("", "/", suffix))
+  } yield path.mkString("", "/", suffix)
+
+  def genFile(suffix: String = ""): Gen[File] = for {
+    path <- genPath(suffix)
+  } yield new File(path)
 
   def genClassRef: Gen[ClassRef] = for {
     isJar <- oneOf(true, false)
     outerFile <- genFile(if (isJar) ".jar" else ".class")
-    innerFile <- genFile(".class")
+    innerFile <- genPath(".class")
   } yield {
     if (isJar)
-      ClassRef.Jarred(outerFile, innerFile)
+      ClassRefJarred(outerFile, innerFile)
     else
-      ClassRef.Loose(outerFile)
+      ClassRefLoose(outerFile)
   }
 
   def genStamp: Gen[Stamp] = for {

@@ -5,6 +5,7 @@ package sbt
 package inc
 
 import xsbti.api.Source
+import xsbti.ClassRef
 import xsbti.DependencyContext._
 import java.io.File
 import java.net.URL
@@ -129,7 +130,7 @@ object Analysis {
       val (j, s) = a.apis.allInternalSources.partition(_.getName.endsWith(".java"))
       val c = a.stamps.allProducts
       val ext = a.apis.allExternals
-      val jars = a.relations.allBinaryDeps.collect { case ClassRef.Jarred(jarPath, _) => jarPath }
+      val jars = a.relations.allBinaryDeps.collect { case ClassRefJarred(jarPath, _) => jarPath }
       val unreportedCount = a.infos.allInfos.values.map(_.unreportedProblems.size).sum
       val sections =
         counted("Scala source", "", "s", s.size) ++
