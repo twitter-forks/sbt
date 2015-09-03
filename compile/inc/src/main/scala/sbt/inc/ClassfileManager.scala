@@ -31,8 +31,8 @@ object ClassfileManager {
   /** Constructs a minimal ClassfileManager implementation that immediately deletes class files when requested. */
   val deleteImmediately: () => ClassfileManager = () => new ClassfileManager {
     def delete(classes: Iterable[File]): Unit = IO.deleteFilesEmptyDirs(classes)
-    def generated(classes: Iterable[File]) {}
-    def complete(success: Boolean) {}
+    def generated(classes: Iterable[File]): Unit = ()
+    def complete(success: Boolean): Unit = ()
   }
   @deprecated("Use overloaded variant that takes additional logger argument, instead.", "0.13.5")
   def transactional(tempDir0: File): () => ClassfileManager =
@@ -48,7 +48,7 @@ object ClassfileManager {
     private[this] val movedClasses = new mutable.HashMap[File, File]
 
     private def showEntries[E](entries: Iterable[E]): String = entries.map(f => s"\t$f").mkString("\n")
-    def delete(classes: Iterable[File]) {
+    def delete(classes: Iterable[File]): Unit = {
       logger.debug(s"About to delete class files:\n${showEntries(classes)}")
       val toBeBackedUp = classes.filter(c => c.exists && !movedClasses.contains(c) && !generatedClasses(c))
       logger.debug(s"We backup classs files:\n${showEntries(toBeBackedUp)}")
@@ -61,12 +61,12 @@ object ClassfileManager {
       logger.debug(s"Registering generated classes:\n${showEntries(classes)}")
       generatedClasses ++= classes
     }
-    def complete(success: Boolean) {
+    def complete(success: Boolean): Unit = {
       if (!success) {
         logger.debug("Rolling back changes to class files.")
         logger.debug(s"Removing generated classes:\n${showEntries(generatedClasses)}")
         IO.deleteFilesEmptyDirs(generatedClasses)
-        logger.debug(s"Restoring class files: \n${showEntries(movedClasses.map(_._1))}")
+        logger.debug(s"Restoring class files: \n${showEntries(movedClasses.keys)}")
         for ((orig, tmp) <- movedClasses) IO.move(tmp, orig)
       }
       logger.debug(s"Removing the temporary directory used for backing up class files: $tempDir")

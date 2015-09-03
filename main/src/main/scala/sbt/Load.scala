@@ -174,7 +174,7 @@ object Load {
       val keys = Index.allKeys(settings)
       val attributeKeys = Index.attributeKeys(data) ++ keys.map(_.key)
       val scopedKeys = keys ++ data.allKeys((s, k) => ScopedKey(s, k))
-      val projectsMap = projects.mapValues(_.defined.keySet).toMap
+      val projectsMap = projects.mapValues(_.defined.keySet)
       val keyIndex = KeyIndex(scopedKeys, projectsMap)
       val aggIndex = KeyIndex.aggregate(scopedKeys, extra(keyIndex), projectsMap)
       new sbt.StructureIndex(Index.stringToKeyMap(attributeKeys), Index.taskToKeyMap(data), Index.triggers(data), keyIndex, aggIndex)
@@ -184,7 +184,7 @@ object Load {
   def reapply(newSettings: Seq[Setting[_]], structure: sbt.BuildStructure)(implicit display: Show[ScopedKey[_]]): sbt.BuildStructure =
     {
       val transformed = finalTransforms(newSettings)
-      val newData = makeSettings(transformed, structure.delegates, structure.scopeLocal)
+      val newData = Def.make(transformed)(structure.delegates, structure.scopeLocal, display)
       val newIndex = structureIndex(newData, transformed, index => BuildUtil(structure.root, structure.units, index, newData), structure.units)
       val newStreams = mkStreams(structure.units, structure.root, newData)
       new sbt.BuildStructure(units = structure.units, root = structure.root, settings = transformed, data = newData, index = newIndex, streams = newStreams, delegates = structure.delegates, scopeLocal = structure.scopeLocal)
@@ -340,12 +340,12 @@ object Load {
         }
       case Nil => (references, builds, loaders)
     }
-  def checkProjectBase(buildBase: File, projectBase: File) {
+  def checkProjectBase(buildBase: File, projectBase: File): Unit = {
     checkDirectory(projectBase)
     assert(buildBase == projectBase || IO.relativize(buildBase, projectBase).isDefined, "Directory " + projectBase + " is not contained in build root " + buildBase)
   }
   def checkBuildBase(base: File) = checkDirectory(base)
-  def checkDirectory(base: File) {
+  def checkDirectory(base: File): Unit = {
     assert(base.isAbsolute, "Not absolute: " + base)
     if (base.isFile)
       sys.error("Not a directory: " + base)
@@ -358,9 +358,9 @@ object Load {
       builds map {
         case (uri, unit) =>
           (uri, unit.resolveRefs(ref => Scope.resolveProjectRef(uri, rootProject, ref)))
-      } toMap;
+      }
     }
-  def checkAll(referenced: Map[URI, List[ProjectReference]], builds: Map[URI, sbt.PartBuildUnit]) {
+  def checkAll(referenced: Map[URI, List[ProjectReference]], builds: Map[URI, sbt.PartBuildUnit]): Unit = {
     val rootProject = getRootProject(builds)
     for ((uri, refs) <- referenced; ref <- refs) {
       val ProjectRef(refURI, refID) = Scope.resolveProjectRef(uri, rootProject, ref)
@@ -396,7 +396,7 @@ object Load {
     {
       IO.assertAbsolute(uri)
       val resolve = (_: Project).resolve(ref => Scope.resolveProjectRef(uri, rootProject, ref))
-      new sbt.LoadedBuildUnit(unit.unit, unit.defined mapValues resolve toMap, unit.rootProjects, unit.buildSettings)
+      new sbt.LoadedBuildUnit(unit.unit, unit.defined mapValues resolve, unit.rootProjects, unit.buildSettings)
     }
   def projects(unit: sbt.BuildUnit): Seq[Project] =
     {

@@ -12,7 +12,7 @@ object Test extends std.TaskExtra {
   def t3[A, B, C](a: Task[A], b: Task[B], c: Task[C]) = multInputTask[({ type l[L[x]] = (L[A], L[B], L[C]) })#l]((a, b, c))(AList.tuple3)
 
   val a = task(3)
-  val b = task[Boolean](error("test"))
+  val b = task[Boolean](sys.error("test"))
   val b2 = task(true)
   val c = task("asdf")
 
@@ -41,7 +41,7 @@ object Test extends std.TaskExtra {
 
   def d4(i: Int): Task[Int] = nop flatMap { _ => val x = math.random; if (x < 0.01) task(i); else d4(i + 1) }
 
-  def go() {
+  def go(): Unit = {
     def run[T](root: Task[T]) =
       println("Result : " + TaskGen.run(root, true, 2))
 

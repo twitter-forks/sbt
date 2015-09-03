@@ -247,7 +247,7 @@ object EvaluateTask {
     {
       val root = ProjectRef(pluginDef.root, Load.getRootProject(pluginDef.units)(pluginDef.root))
       val pluginKey = pluginData
-      val config = extractedConfig(Project.extract(state), pluginDef, state)
+      val config = extractedTaskConfig(Project.extract(state), pluginDef, state)
       val evaluated = apply(pluginDef, ScopedKey(pluginKey.scope, pluginKey.key), state, root, config)
       val (newS, result) = evaluated getOrElse sys.error("Plugin data does not exist for plugin definition at " + pluginDef.root)
       Project.runUnloadHooks(newS) // discard states
@@ -280,7 +280,7 @@ object EvaluateTask {
     }
   }
   def logIncResult(result: Result[_], state: State, streams: Streams) = result match { case Inc(i) => logIncomplete(i, state, streams); case _ => () }
-  def logIncomplete(result: Incomplete, state: State, streams: Streams) {
+  def logIncomplete(result: Incomplete, state: State, streams: Streams): Unit = {
     val all = Incomplete linearize result
     val keyed = for (Incomplete(Some(key: ScopedKey[_]), _, msg, _, ex) <- all) yield (key, msg, ex)
     val un = all.filter { i => i.node.isEmpty || i.message.isEmpty }
@@ -415,7 +415,7 @@ object EvaluateTask {
 
   def liftAnonymous: Incomplete => Incomplete = {
     case i @ Incomplete(node, tpe, None, causes, None) =>
-      causes.find(inc => !inc.node.isDefined && (inc.message.isDefined || inc.directCause.isDefined)) match {
+      causes.find(inc => inc.node.isEmpty && (inc.message.isDefined || inc.directCause.isDefined)) match {
         case Some(lift) => i.copy(directCause = lift.directCause, message = lift.message)
         case None       => i
       }

@@ -83,9 +83,8 @@ class MakePom(val log: Logger) {
     write(process(toPom(ivy, module, moduleInfo, configurations, includeTypes, extra, filterRepositories, allRepositories)), output)
   // use \n as newline because toString uses PrettyPrinter, which hard codes line endings to be \n
   def write(node: XNode, output: File): Unit = write(toString(node), output, "\n")
-  def write(xmlString: String, output: File, newline: String) {
+  def write(xmlString: String, output: File, newline: String): Unit =
     IO.write(output, "<?xml version='1.0' encoding='" + IO.utf8.name + "'?>" + newline + xmlString)
-  }
 
   def toString(node: XNode): String = new PrettyPrinter(1000, 4).format(node)
   @deprecated("Use `toPom(Ivy, ModuleDescriptor, ModuleInfo, Option[Iterable[Configuration]], Set[String], NodeSeq, MavenRepository => Boolean, Boolean)` instead", "0.11.2")
@@ -248,7 +247,7 @@ class MakePom(val log: Logger) {
     val includeArtifacts = artifacts.filter(d => includeTypes(d.getType))
     if (artifacts.isEmpty) {
       val configs = dependency.getModuleConfigurations
-      if (configs.filterNot(Set("sources", "docs")).nonEmpty) {
+      if (!configs.forall(Set("sources", "docs"))) {
         warnIntransitve()
         val (scope, optional) = getScopeAndOptional(dependency.getModuleConfigurations)
         makeDependencyElem(dependency, scope, optional, None, None, excludes)
@@ -271,7 +270,7 @@ class MakePom(val log: Logger) {
         case Nil | "*" :: Nil => dependency.getModuleConfigurations
         case x                => x.toArray
       }
-      if (configs.filterNot(Set("sources", "docs")).nonEmpty) {
+      if (!configs.forall(Set("sources", "docs"))) {
         val (scope, optional) = getScopeAndOptional(configs)
         val classifier = artifactClassifier(artifact)
         val baseType = artifactType(artifact)

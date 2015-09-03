@@ -82,7 +82,7 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
     val outputSettings = output match {
       case single: SingleOutput => Array(new OutputSetting("/", single.outputLocation.getAbsolutePath))
       case multi: MultipleOutput =>
-        multi.outputGroups.map(out => new OutputSetting(out.sourceDirectory.getAbsolutePath, out.outputDirectory.getAbsolutePath)).toArray
+        multi.outputGroups.map(out => new OutputSetting(out.sourceDirectory.getAbsolutePath, out.outputDirectory.getAbsolutePath))
     }
     new Compilation(System.currentTimeMillis, outputSettings)
   }
@@ -181,7 +181,7 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
   // empty value used when name hashing algorithm is disabled
   private val emptyNameHashes = new xsbti.api._internalOnly_NameHashes(Array.empty, Array.empty)
 
-  def api(sourceFile: File, source: SourceAPI) {
+  def api(sourceFile: File, source: SourceAPI): Unit = {
     import xsbt.api.{ APIUtil, HashAPI }
     if (APIUtil.isScalaSourceName(sourceFile.getName) && APIUtil.hasMacro(source)) macroSources += sourceFile
     publicNameHashes(sourceFile) = {

@@ -19,10 +19,11 @@ object Scripted {
   case class ScriptedTestPage(page: Int, total: Int)
   def scriptedParser(scriptedBase: File): Parser[Seq[String]] =
     {
-      val pairs = (scriptedBase * AllPassFilter * AllPassFilter * "test").get map { (f: File) =>
+      val scriptedFiles: NameFilter = ("test": NameFilter) | "pending"
+      val pairs = (scriptedBase * AllPassFilter * AllPassFilter * scriptedFiles).get map { (f: File) =>
         val p = f.getParentFile
         (p.getParentFile.getName, p.getName)
-      };
+      }
       val pairMap = pairs.groupBy(_._1).mapValues(_.map(_._2).toSet);
 
       val id = charClass(c => !c.isWhitespace && c != '/').+.string
@@ -65,7 +66,7 @@ object Scripted {
       launchOpts: Array[String], prescripted: java.util.List[File]): Unit
   }
 
-  def doScripted(launcher: File, scriptedSbtClasspath: Seq[Attributed[File]], scriptedSbtInstance: ScalaInstance, sourcePath: File, args: Seq[String], prescripted: File => Unit) {
+  def doScripted(launcher: File, scriptedSbtClasspath: Seq[Attributed[File]], scriptedSbtInstance: ScalaInstance, sourcePath: File, args: Seq[String], prescripted: File => Unit): Unit = {
     System.err.println(s"About to run tests: ${args.mkString("\n * ", "\n * ", "\n")}")
     val noJLine = new classpath.FilteredLoader(scriptedSbtInstance.loader, "jline." :: Nil)
     val loader = classpath.ClasspathUtilities.toLoader(scriptedSbtClasspath.files, noJLine)

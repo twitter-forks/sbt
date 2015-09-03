@@ -206,7 +206,7 @@ private class InitialStamps extends ReadStamps {
     IO.classfilePathFromURL(u) match {
       case Left(classfile) =>
         lastModified(new File(classfile))
-      case Right(jarPath, classfile) =>
+      case Right((jarPath, classfile)) =>
         lastModified(jarPath, classfile)
     }
   }

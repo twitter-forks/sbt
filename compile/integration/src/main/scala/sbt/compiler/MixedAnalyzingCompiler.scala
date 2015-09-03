@@ -44,7 +44,7 @@ final class MixedAnalyzingCompiler(
     logInputs(log, javaSrcs.size, scalaSrcs.size, outputDirs)
     /** compiles the scala code necessary using the analyzing compiler. */
     def compileScala(): Unit =
-      if (!scalaSrcs.isEmpty) {
+      if (scalaSrcs.nonEmpty) {
         val sources = if (order == Mixed) incSrc else scalaSrcs
         val arguments = cArgs(Nil, absClasspath, None, options.options)
         timed("Scala compilation", log) {
@@ -55,7 +55,7 @@ final class MixedAnalyzingCompiler(
      * Compiles the Java code necessary.  All analysis code is included in this method.
      */
     def compileJava(): Unit =
-      if (!javaSrcs.isEmpty) {
+      if (javaSrcs.nonEmpty) {
         // Runs the analysis portion of Javac.
         timed("Java compile + analysis", log) {
           javac.compile(javaSrcs, options.javacOptions.toArray[String], output, callback, reporter, log, progress)
@@ -78,11 +78,11 @@ final class MixedAnalyzingCompiler(
     result
   }
 
-  private[this] def logInputs(log: Logger, javaCount: Int, scalaCount: Int, outputDirs: Seq[File]) {
+  private[this] def logInputs(log: Logger, javaCount: Int, scalaCount: Int, outputDirs: Seq[File]): Unit = {
     val scalaMsg = Analysis.counted("Scala source", "", "s", scalaCount)
     val javaMsg = Analysis.counted("Java source", "", "s", javaCount)
     val combined = scalaMsg ++ javaMsg
-    if (!combined.isEmpty)
+    if (combined.nonEmpty)
       log.info(combined.mkString("Compiling ", " and ", " to " + outputDirs.map(_.getAbsolutePath).mkString(",") + "..."))
   }
 
@@ -188,7 +188,7 @@ object MixedAnalyzingCompiler {
   def withBootclasspath(args: CompilerArguments, classpath: Seq[File]): Seq[File] =
     args.bootClasspathFor(classpath) ++ args.extClasspath ++ args.finishClasspath(classpath)
   private[this] def explicitBootClasspath(options: Seq[String]): Seq[File] =
-    options.dropWhile(_ != CompilerArguments.BootClasspathOption).drop(1).take(1).headOption.toList.flatMap(IO.parseClasspath)
+    options.dropWhile(_ != CompilerArguments.BootClasspathOption).slice(1, 2).headOption.toList.flatMap(IO.parseClasspath)
 
   private[this] val cache = new collection.mutable.HashMap[File, Reference[AnalysisStore]]
   private def staticCache(file: File, backing: => AnalysisStore): AnalysisStore =

@@ -141,7 +141,7 @@ sealed trait Project extends ProjectDefinition[ProjectReference] {
   def aggregate(refs: ProjectReference*): Project = copy(aggregate = (aggregate: Seq[ProjectReference]) ++ refs)
 
   /** Appends settings to the current settings sequence for this project. */
-  def settings(ss: SettingsDefinition*): Project = copy(settings = (settings: Seq[Def.Setting[_]]) ++ ss.flatMap(_.settings))
+  def settings(ss: Def.SettingsDefinition*): Project = copy(settings = (settings: Seq[Def.Setting[_]]) ++ Def.settings(ss: _*))
 
   @deprecated("Use settingSets method.", "0.13.5")
   def autoSettings(select: AddSettings*): Project = settingSets(select.toSeq: _*)
@@ -451,12 +451,12 @@ object Project extends ProjectExtra {
     }
   def settingGraph(structure: BuildStructure, basedir: File, scoped: ScopedKey[_])(implicit display: Show[ScopedKey[_]]): SettingGraph =
     SettingGraph(structure, basedir, scoped, 0)
-  def graphSettings(structure: BuildStructure, basedir: File)(implicit display: Show[ScopedKey[_]]) {
+  def graphSettings(structure: BuildStructure, basedir: File)(implicit display: Show[ScopedKey[_]]): Unit = {
     def graph(actual: Boolean, name: String) = graphSettings(structure, actual, name, new File(basedir, name + ".dot"))
     graph(true, "actual_dependencies")
     graph(false, "declared_dependencies")
   }
-  def graphSettings(structure: BuildStructure, actual: Boolean, graphName: String, file: File)(implicit display: Show[ScopedKey[_]]) {
+  def graphSettings(structure: BuildStructure, actual: Boolean, graphName: String, file: File)(implicit display: Show[ScopedKey[_]]): Unit = {
     val rel = relation(structure, actual)
     val keyToString = display.apply _
     DotGraph.generateGraph(file, graphName, rel, keyToString, keyToString)
@@ -464,7 +464,7 @@ object Project extends ProjectExtra {
   def relation(structure: BuildStructure, actual: Boolean)(implicit display: Show[ScopedKey[_]]): Relation[ScopedKey[_], ScopedKey[_]] =
     relation(structure.settings, actual)(structure.delegates, structure.scopeLocal, display)
 
-  private[sbt] def relation(settings: Seq[Setting[_]], actual: Boolean)(implicit delegates: Scope => Seq[Scope], scopeLocal: Def.ScopeLocal, display: Show[ScopedKey[_]]): Relation[ScopedKey[_], ScopedKey[_]] =
+  private[sbt] def relation(settings: Seq[Def.Setting[_]], actual: Boolean)(implicit delegates: Scope => Seq[Scope], scopeLocal: Def.ScopeLocal, display: Show[ScopedKey[_]]): Relation[ScopedKey[_], ScopedKey[_]] =
     {
       type Rel = Relation[ScopedKey[_], ScopedKey[_]]
       val cMap = Def.flattenLocals(Def.compiled(settings, actual))
@@ -510,7 +510,7 @@ object Project extends ProjectExtra {
 
   val ProjectReturn = AttributeKey[List[File]]("project-return", "Maintains a stack of builds visited using reload.")
   def projectReturn(s: State): List[File] = getOrNil(s, ProjectReturn)
-  def inPluginProject(s: State): Boolean = projectReturn(s).toList.length > 1
+  def inPluginProject(s: State): Boolean = projectReturn(s).length > 1
   def setProjectReturn(s: State, pr: List[File]): State = s.copy(attributes = s.attributes.put(ProjectReturn, pr))
   def loadAction(s: State, action: LoadAction.Value) = action match {
     case Return =>

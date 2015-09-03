@@ -40,7 +40,7 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
             None
           } else {
             try { scriptedTest(str, testDirectory, prescripted, log); None }
-            catch { case e: xsbt.test.TestException => Some(str) }
+            catch { case _: xsbt.test.TestException | _: PendingTestSuccessException => Some(str) }
           }
         }
       }
@@ -72,7 +72,7 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
           val parser = createParser()
           run(parser.parse(file))
         }
-      def testFailed() {
+      def testFailed(): Unit = {
         if (pending) buffered.clear() else buffered.stop()
         buffered.error("x " + label + pendingString)
       }
@@ -81,6 +81,7 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
         prescripted(testDirectory)
         runTest()
         buffered.info("+ " + label + pendingString)
+        if (pending) throw new PendingTestSuccessException(label)
       } catch {
         case e: xsbt.test.TestException =>
           testFailed()
@@ -89,6 +90,10 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
             case _                                  => e.printStackTrace
           }
           if (!pending) throw e
+        case e: PendingTestSuccessException =>
+          testFailed()
+          buffered.error("  Mark as passing to remove this failure.")
+          throw e
         case e: Exception =>
           testFailed()
           if (!pending) throw e
@@ -98,7 +103,7 @@ final class ScriptedTests(resourceBaseDirectory: File, bufferLog: Boolean, launc
 
 object ScriptedTests extends ScriptedRunner {
   val emptyCallback: File => Unit = { _ => () }
-  def main(args: Array[String]) {
+  def main(args: Array[String]): Unit = {
     val directory = new File(args(0))
     val buffer = args(1).toBoolean
     val sbtVersion = args(2)
@@ -145,7 +150,7 @@ class ScriptedRunner {
     }
     runAll(allTests)
   }
-  def runAll(tests: Seq[() => Option[String]]) {
+  def runAll(tests: Seq[() => Option[String]]): Unit = {
     val errors = for (test <- tests; err <- test()) yield err
     if (errors.nonEmpty)
       sys.error(errors.mkString("Failed tests:\n\t", "\n\t", "\n"))
@@ -208,4 +213,8 @@ object CompatibilityLevel extends Enumeration {
       case Minimal27 => "2.7.7"
       case Minimal28 => "2.8.1"
     }
+}
+class PendingTestSuccessException(label: String) extends Exception {
+  override def getMessage: String =
+    s"The pending test $label succeeded. Mark this test as passing to remove this failure."
 }

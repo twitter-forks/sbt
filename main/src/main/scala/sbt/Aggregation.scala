@@ -39,7 +39,7 @@ final object Aggregation {
       showRun(complete, show)
       (complete.state, complete.results)
     }
-  def showRun[T](complete: Complete[T], show: ShowConfig)(implicit display: Show[ScopedKey[_]]) {
+  def showRun[T](complete: Complete[T], show: ShowConfig)(implicit display: Show[ScopedKey[_]]): Unit = {
     import complete._
     val log = state.log
     val extracted = Project extract state
@@ -76,7 +76,7 @@ final object Aggregation {
     }
   }
 
-  def printSuccess(start: Long, stop: Long, extracted: Extracted, success: Boolean, log: Logger) {
+  def printSuccess(start: Long, stop: Long, extracted: Extracted, success: Boolean, log: Logger): Unit = {
     import extracted._
     def get(key: SettingKey[Boolean]): Boolean = key in currentRef get structure.data getOrElse true
     if (get(showSuccess)) {
@@ -138,8 +138,8 @@ final object Aggregation {
         //  tasks, and input tasks in the same call.  The code below allows settings and tasks to be mixed, but not input tasks.
         // One problem with input tasks in `all` is that many input tasks consume all input and would need syntactic delimiters.
         // Once that is addressed, the tasks constructed by the input tasks would need to be combined with the explicit tasks.
-        if (inputTasks.size > 0) {
-          if (other.size > 0) {
+        if (inputTasks.nonEmpty) {
+          if (other.nonEmpty) {
             val inputStrings = inputTasks.map(_.key).mkString("Input task(s):\n\t", "\n\t", "\n")
             val otherStrings = other.map(_.key).mkString("Task(s)/setting(s):\n\t", "\n\t", "\n")
             failure(s"Cannot mix input tasks with plain tasks/settings.  $inputStrings $otherStrings")
