@@ -2,7 +2,6 @@ package sbt
 package inc
 
 import java.io.File
-import java.net.URL
 
 import org.scalacheck._
 import Arbitrary._
@@ -55,15 +54,15 @@ object TestCaseGenerators {
     path <- listOfN(n, genFilePathSegment)
   } yield new File(path.mkString("", "/", suffix))
 
-  def genURL: Gen[URL] = for {
+  def genClassRef: Gen[ClassRef] = for {
     isJar <- oneOf(true, false)
     outerFile <- genFile(if (isJar) ".jar" else ".class")
     innerFile <- genFile(".class")
   } yield {
     if (isJar)
-      new URL("jar:file:" + outerFile + "!/" + innerFile)
+      ClassRef.Jarred(outerFile, innerFile)
     else
-      outerFile.toURI.toURL
+      ClassRef.Loose(outerFile)
   }
 
   def genStamp: Gen[Stamp] = for {
@@ -141,7 +140,7 @@ object TestCaseGenerators {
     entries <- listOfN(srcs.length, containerOfN[Set, T](n, g))
   } yield Relation.reconstruct(zipMap(srcs, entries))
 
-  val genURLRelation = genRelation[URL](unique(genURL)) _
+  val genClassRefRelation = genRelation[ClassRef](unique(genClassRef)) _
   val genStringRelation = genRelation[String](unique(identifier)) _
 
   def genRSource(srcs: List[File]): Gen[Relations.Source] = for {
@@ -171,8 +170,8 @@ object TestCaseGenerators {
   def genRelations: Gen[Relations] = for {
     numSrcs <- choose(0, maxSources)
     srcs <- listOfN(numSrcs, genFile())
-    srcProd <- genURLRelation(srcs)
-    binaryDep <- genURLRelation(srcs)
+    srcProd <- genClassRefRelation(srcs)
+    binaryDep <- genClassRefRelation(srcs)
     direct <- genRSource(srcs)
     publicInherited <- genSubRSource(direct)
     classes <- genStringRelation(srcs)
@@ -182,8 +181,8 @@ object TestCaseGenerators {
   def genRelationsNameHashing: Gen[Relations] = for {
     numSrcs <- choose(0, maxSources)
     srcs <- listOfN(numSrcs, genFile())
-    srcProd <- genURLRelation(srcs)
-    binaryDep <- genURLRelation(srcs)
+    srcProd <- genClassRefRelation(srcs)
+    binaryDep <- genClassRefRelation(srcs)
     memberRef <- genRSourceDependencies(srcs)
     inheritance <- genSubRSourceDependencies(memberRef)
     classes <- genStringRelation(srcs)

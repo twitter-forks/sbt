@@ -13,34 +13,34 @@ import scala.util.matching.Regex
 
 trait ReadStamps {
   /** The Stamp for the given product at the time represented by this Stamps instance.*/
-  def product(prod: URL): Stamp
+  def product(prod: ClassRef): Stamp
   /** The Stamp for the given source file at the time represented by this Stamps instance.*/
   def internalSource(src: File): Stamp
   /** The Stamp for the given binary dependency at the time represented by this Stamps instance.*/
-  def binary(bin: URL): Stamp
+  def binary(bin: ClassRef): Stamp
 }
 
 /** Provides information about files as they were at a specific time.*/
 trait Stamps extends ReadStamps {
   def allInternalSources: collection.Set[File]
-  def allBinaries: collection.Set[URL]
-  def allProducts: collection.Set[URL]
+  def allBinaries: collection.Set[ClassRef]
+  def allProducts: collection.Set[ClassRef]
 
   def sources: Map[File, Stamp]
-  def binaries: Map[URL, Stamp]
-  def products: Map[URL, Stamp]
-  def classNames: Map[URL, String]
+  def binaries: Map[ClassRef, Stamp]
+  def products: Map[ClassRef, Stamp]
+  def classNames: Map[ClassRef, String]
 
-  def className(bin: URL): Option[String]
+  def className(bin: ClassRef): Option[String]
 
   def markInternalSource(src: File, s: Stamp): Stamps
-  def markBinary(bin: URL, className: String, s: Stamp): Stamps
-  def markProduct(prod: URL, s: Stamp): Stamps
+  def markBinary(bin: ClassRef, className: String, s: Stamp): Stamps
+  def markProduct(prod: ClassRef, s: Stamp): Stamps
 
-  def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: URL => Boolean): Stamps
+  def filter(prod: ClassRef => Boolean, removeSources: Iterable[File], bin: ClassRef => Boolean): Stamps
 
   def ++(o: Stamps): Stamps
-  def groupBy[K](prod: Map[K, URL => Boolean], sourcesGrouping: File => K, bin: Map[K, URL => Boolean]): Map[K, Stamps]
+  def groupBy[K](prod: Map[K, ClassRef => Boolean], sourcesGrouping: File => K, bin: Map[K, ClassRef => Boolean]): Map[K, Stamps]
 }
 
 sealed trait Stamp {
@@ -121,16 +121,16 @@ object Stamps {
 
   val empty: Stamps = apply(Map.empty, Map.empty, Map.empty, Map.empty)
 
-  def apply(products: Map[URL, Stamp], sources: Map[File, Stamp], binaries: Map[URL, Stamp], binaryClassNames: Map[URL, String]): Stamps =
+  def apply(products: Map[ClassRef, Stamp], sources: Map[File, Stamp], binaries: Map[ClassRef, Stamp], binaryClassNames: Map[ClassRef, String]): Stamps =
     new MStamps(products, sources, binaries, binaryClassNames)
 
   def merge(stamps: Traversable[Stamps]): Stamps = (Stamps.empty /: stamps)(_ ++ _)
 }
 
-private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stamp], val binaries: Map[URL, Stamp], val classNames: Map[URL, String]) extends Stamps {
+private class MStamps(val products: Map[ClassRef, Stamp], val sources: Map[File, Stamp], val binaries: Map[ClassRef, Stamp], val classNames: Map[ClassRef, String]) extends Stamps {
   def allInternalSources: collection.Set[File] = sources.keySet
-  def allBinaries: collection.Set[URL] = binaries.keySet
-  def allProducts: collection.Set[URL] = products.keySet
+  def allBinaries: collection.Set[ClassRef] = binaries.keySet
+  def allProducts: collection.Set[ClassRef] = products.keySet
 
   def ++(o: Stamps): Stamps =
     new MStamps(products ++ o.products, sources ++ o.sources, binaries ++ o.binaries, classNames ++ o.classNames)
@@ -138,16 +138,16 @@ private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stam
   def markInternalSource(src: File, s: Stamp): Stamps =
     new MStamps(products, sources.updated(src, s), binaries, classNames)
 
-  def markBinary(bin: URL, className: String, s: Stamp): Stamps =
+  def markBinary(bin: ClassRef, className: String, s: Stamp): Stamps =
     new MStamps(products, sources, binaries.updated(bin, s), classNames.updated(bin, className))
 
-  def markProduct(prod: URL, s: Stamp): Stamps =
+  def markProduct(prod: ClassRef, s: Stamp): Stamps =
     new MStamps(products.updated(prod, s), sources, binaries, classNames)
 
-  def filter(prod: URL => Boolean, removeSources: Iterable[File], bin: URL => Boolean): Stamps =
+  def filter(prod: ClassRef => Boolean, removeSources: Iterable[File], bin: ClassRef => Boolean): Stamps =
     new MStamps(products.filterKeys(prod), sources -- removeSources, binaries.filterKeys(bin), classNames.filterKeys(bin))
 
-  def groupBy[K](prod: Map[K, URL => Boolean], f: File => K, bin: Map[K, URL => Boolean]): Map[K, Stamps] =
+  def groupBy[K](prod: Map[K, ClassRef => Boolean], f: File => K, bin: Map[K, ClassRef => Boolean]): Map[K, Stamps] =
     {
       val sourcesMap: Map[K, Map[File, Stamp]] = sources.groupBy(x => f(x._1))
 
@@ -162,10 +162,10 @@ private class MStamps(val products: Map[URL, Stamp], val sources: Map[File, Stam
       (for (k <- prod.keySet ++ sourcesMap.keySet ++ bin.keySet) yield (k, kStamps(k))).toMap
     }
 
-  def product(prod: URL) = getStamp(products, prod)
+  def product(prod: ClassRef) = getStamp(products, prod)
   def internalSource(src: File) = getStamp(sources, src)
-  def binary(bin: URL) = getStamp(binaries, bin)
-  def className(bin: URL) = classNames get bin
+  def binary(bin: ClassRef) = getStamp(binaries, bin)
+  def className(bin: ClassRef) = classNames get bin
 
   override def equals(other: Any): Boolean = other match {
     case o: MStamps => products == o.products && sources == o.sources && binaries == o.binaries && classNames == o.classNames
@@ -194,16 +194,16 @@ private class InitialStamps extends ReadStamps {
   // map from jar path to map of internal classfile to Stamp
   private val jars = mutable.Map[String, Map[String, Stamp]]()
 
-  def product(prod: URL): Stamp = lastModified(prod)
+  def product(prod: ClassRef): Stamp = lastModified(prod)
   def internalSource(src: File): Stamp = lastModified(src)
-  def binary(bin: URL): Stamp = lastModified(bin)
+  def binary(bin: ClassRef): Stamp = lastModified(bin)
 
   private def lastModified(f: File): Stamp = files.synchronized {
     files.getOrElseUpdate(f, Stamp.lastModifiedFile(f))
   }
 
-  private def lastModified(u: URL): Stamp = Stamp.tryStamp {
-    IO.classfilePathFromURL(u) match {
+  private def lastModified(u: ClassRef): Stamp = Stamp.tryStamp {
+    IO.classfilePathFromClassRef(u) match {
       case Left(classfile) =>
         lastModified(new File(classfile))
       case Right((jarPath, classfile)) =>

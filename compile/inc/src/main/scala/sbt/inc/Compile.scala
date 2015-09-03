@@ -41,7 +41,7 @@ object IncrementalCompile {
    *         A flag of whether or not compilation completed succesfully, and the resulting dependency analysis object.
    *
    */
-  def apply(sources: Set[File], entry: String => Option[URL],
+  def apply(sources: Set[File], entry: String => Option[ClassRef],
     compile: (Set[File], DependencyChanges, xsbti.AnalysisCallback) => Unit,
     previous: Analysis,
     forEntry: File => Option[Analysis],
@@ -49,7 +49,7 @@ object IncrementalCompile {
     options: IncOptions): (Boolean, Analysis) =
     {
       val current = Stamps.initial()
-      val internalMap = (f: URL) => previous.relations.produced(f).headOption
+      val internalMap = (f: ClassRef) => previous.relations.produced(f).headOption
       val externalAPI = getExternalAPI(entry, forEntry)
       try {
         Incremental.compile(sources, entry, previous, current, forEntry, doCompile(compile, internalMap, externalAPI, current, output, options), log, options)
@@ -61,14 +61,14 @@ object IncrementalCompile {
           (false, previous)
       }
     }
-  def doCompile(compile: (Set[File], DependencyChanges, xsbti.AnalysisCallback) => Unit, internalMap: URL => Option[File], externalAPI: (URL, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) =
+  def doCompile(compile: (Set[File], DependencyChanges, xsbti.AnalysisCallback) => Unit, internalMap: ClassRef => Option[File], externalAPI: (ClassRef, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) =
     (srcs: Set[File], changes: DependencyChanges) => {
       val callback = new AnalysisCallback(internalMap, externalAPI, current, output, options)
       compile(srcs, changes, callback)
       callback.get
     }
-  def getExternalAPI(entry: String => Option[URL], forEntry: File => Option[Analysis]): (URL, String) => Option[Source] =
-    (file: URL, className: String) =>
+  def getExternalAPI(entry: String => Option[ClassRef], forEntry: File => Option[Analysis]): (ClassRef, String) => Option[Source] =
+    (file: ClassRef, className: String) =>
       entry(className) flatMap { defines =>
         forEntry(IO.asFile(defines)) flatMap { analysis =>
           analysis.relations.definesClass(className).headOption flatMap { src =>
@@ -77,7 +77,7 @@ object IncrementalCompile {
         }
       }
 }
-private final class AnalysisCallback(internalMap: URL => Option[File], externalAPI: (URL, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) extends xsbti.AnalysisCallback {
+private final class AnalysisCallback(internalMap: ClassRef => Option[File], externalAPI: (ClassRef, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) extends xsbti.AnalysisCallback {
   val compilation = {
     val outputSettings = output match {
       case single: SingleOutput => Array(new OutputSetting("/", single.outputLocation.getAbsolutePath))
@@ -96,16 +96,16 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
   private[this] val publicNameHashes = new HashMap[File, _internalOnly_NameHashes]
   private[this] val unreporteds = new HashMap[File, ListBuffer[Problem]]
   private[this] val reporteds = new HashMap[File, ListBuffer[Problem]]
-  private[this] val binaryDeps = new HashMap[File, Set[URL]]
+  private[this] val binaryDeps = new HashMap[File, Set[ClassRef]]
   // source file to set of generated (class file, class name)
-  private[this] val classes = new HashMap[File, Set[(URL, String)]]
+  private[this] val classes = new HashMap[File, Set[(ClassRef, String)]]
   // generated class file to its source file
-  private[this] val classToSource = new HashMap[URL, File]
+  private[this] val classToSource = new HashMap[ClassRef, File]
   // internal source dependencies
   private[this] val intSrcDeps = new HashMap[File, Set[InternalDependency]]
   // external source dependencies
   private[this] val extSrcDeps = new HashMap[File, Set[ExternalDependency]]
-  private[this] val binaryClassName = new HashMap[URL, String]
+  private[this] val binaryClassName = new HashMap[ClassRef, String]
   // source files containing a macro def.
   private[this] val macroSources = Set[File]()
 
@@ -131,7 +131,7 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
       sourceDependency(dependsOn, source, context)
     }
 
-  private[this] def externalBinaryDependency(binary: URL, className: String, source: File, context: DependencyContext) = {
+  private[this] def externalBinaryDependency(binary: ClassRef, className: String, source: File, context: DependencyContext) = {
     binaryClassName.put(binary, className)
     add(binaryDeps, source, binary)
   }
@@ -141,7 +141,7 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
     add(extSrcDeps, sourceFile, dependency)
   }
 
-  def binaryDependency(classFile: URL, name: String, source: File, context: DependencyContext) =
+  def binaryDependency(classFile: ClassRef, name: String, source: File, context: DependencyContext) =
     internalMap(classFile) match {
       case Some(dependsOn) =>
         // dependency is a product of a source not included in this compilation
@@ -158,12 +158,12 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
     }
 
   @deprecated("Use `binaryDependency(File, String, File, DependencyContext)`.", "0.13.8")
-  def binaryDependency(classFile: URL, name: String, source: File, inherited: Boolean) = {
+  def binaryDependency(classFile: ClassRef, name: String, source: File, inherited: Boolean) = {
     val context = if (inherited) DependencyByInheritance else DependencyByMemberRef
     binaryDependency(classFile, name, source, context)
   }
 
-  private[this] def externalDependency(classFile: URL, name: String, source: File, context: DependencyContext): Unit =
+  private[this] def externalDependency(classFile: ClassRef, name: String, source: File, context: DependencyContext): Unit =
     externalAPI(classFile, name) match {
       case Some(api) =>
         // dependency is a product of a source in another project
@@ -173,7 +173,7 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
         externalBinaryDependency(classFile, name, source, context)
     }
 
-  def generatedClass(source: File, module: URL, name: String) = {
+  def generatedClass(source: File, module: ClassRef, name: String) = {
     add(classes, source, (module, name))
     classToSource.put(module, source)
   }
@@ -217,8 +217,8 @@ private final class AnalysisCallback(internalMap: URL => Option[File], externalA
         val hasMacro: Boolean = macroSources.contains(src)
         val s = new xsbti.api.Source(compilation, hash, api._2, api._1, publicNameHashes(src), hasMacro)
         val info = SourceInfos.makeInfo(getOrNil(reporteds, src), getOrNil(unreporteds, src))
-        val binaries: Iterable[URL] = binaryDeps.getOrElse(src, Nil)
-        val prods: Iterable[(URL, String)] = classes.getOrElse(src, Nil)
+        val binaries: Iterable[ClassRef] = binaryDeps.getOrElse(src, Nil)
+        val prods: Iterable[(ClassRef, String)] = classes.getOrElse(src, Nil)
 
         val products = prods.map { case (prod, name) => (prod, name, current product prod) }
         val internalDeps = intSrcDeps.getOrElse(src, Set.empty)

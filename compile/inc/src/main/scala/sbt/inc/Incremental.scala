@@ -37,7 +37,7 @@ object Incremental {
    */
   def compile(sources: Set[File],
     // TODO: unsure.
-    entry: String => Option[URL],
+    entry: String => Option[ClassRef],
     previous: Analysis,
     current: ReadStamps,
     forEntry: File => Option[Analysis],

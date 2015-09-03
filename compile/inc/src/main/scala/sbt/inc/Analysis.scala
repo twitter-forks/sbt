@@ -54,19 +54,19 @@ trait Analysis {
     compilations: Compilations = compilations): Analysis
 
   def addSource(src: File, api: Source, stamp: Stamp, info: SourceInfo,
-    products: Iterable[(URL, String, Stamp)],
+    products: Iterable[(ClassRef, String, Stamp)],
     internalDeps: Iterable[InternalDependency],
     externalDeps: Iterable[ExternalDependency],
-    binaryDeps: Iterable[(URL, String, Stamp)]): Analysis
+    binaryDeps: Iterable[(ClassRef, String, Stamp)]): Analysis
 
   @deprecated("Register all products and dependencies in addSource.", "0.13.8")
   def addSource(src: File, api: Source, stamp: Stamp, directInternal: Iterable[File], inheritedInternal: Iterable[File], info: SourceInfo): Analysis
   @deprecated("Register all products and dependencies in addSource.", "0.13.8")
-  def addBinaryDep(src: File, dep: URL, className: String, stamp: Stamp): Analysis
+  def addBinaryDep(src: File, dep: ClassRef, className: String, stamp: Stamp): Analysis
   @deprecated("Register all products and dependencies in addSource.", "0.13.8")
   def addExternalDep(src: File, dep: String, api: Source, inherited: Boolean): Analysis
   @deprecated("Register all products and dependencies in addSource.", "0.13.8")
-  def addProduct(src: File, product: URL, stamp: Stamp, name: String): Analysis
+  def addProduct(src: File, product: ClassRef, stamp: Stamp, name: String): Analysis
 
   /** Partitions this Analysis using the discriminator function. Externalizes internal deps that cross partitions. */
   def groupBy[K](discriminator: (File => K)): Map[K, Analysis]
@@ -168,10 +168,10 @@ private class MAnalysis(val stamps: Stamps, val apis: APIs, val relations: Relat
     new MAnalysis(stamps, apis, relations, infos, compilations)
 
   def addSource(src: File, api: Source, stamp: Stamp, info: SourceInfo,
-    products: Iterable[(URL, String, Stamp)],
+    products: Iterable[(ClassRef, String, Stamp)],
     internalDeps: Iterable[InternalDependency],
     externalDeps: Iterable[ExternalDependency],
-    binaryDeps: Iterable[(URL, String, Stamp)]): Analysis = {
+    binaryDeps: Iterable[(ClassRef, String, Stamp)]): Analysis = {
 
     val newStamps = {
       val productStamps = products.foldLeft(stamps.markInternalSource(src, stamp)) {
@@ -200,7 +200,7 @@ private class MAnalysis(val stamps: Stamps, val apis: APIs, val relations: Relat
     addSource(src, api, stamp, info, products = Nil, directDeps ++ inheritedDeps, Nil, Nil)
   }
 
-  def addBinaryDep(src: File, dep: URL, className: String, stamp: Stamp): Analysis =
+  def addBinaryDep(src: File, dep: ClassRef, className: String, stamp: Stamp): Analysis =
     copy(stamps.markBinary(dep, className, stamp), apis, relations.addBinaryDeps(src, (dep, className, stamp) :: Nil), infos)
 
   def addExternalDep(src: File, dep: String, depAPI: Source, inherited: Boolean): Analysis = {
@@ -208,7 +208,7 @@ private class MAnalysis(val stamps: Stamps, val apis: APIs, val relations: Relat
     copy(stamps, apis.markExternalAPI(dep, depAPI), relations.addExternalDeps(src, ExternalDependency(src, dep, depAPI, context) :: Nil), infos)
   }
 
-  def addProduct(src: File, product: URL, stamp: Stamp, name: String): Analysis =
+  def addProduct(src: File, product: ClassRef, stamp: Stamp, name: String): Analysis =
     copy(stamps.markProduct(product, stamp), apis, relations.addProducts(src, (product, name) :: Nil), infos)
 
   def groupBy[K](discriminator: File => K): Map[K, Analysis] = {

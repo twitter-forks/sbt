@@ -36,19 +36,19 @@ object Locate {
    * Returns a function that searches the provided class path for
    * a class name and returns the entry that defines that class.
    *
-   * TODO: refactor in terms of native URL use.
+   * TODO: refactor in terms of native ClassRef use.
    */
-  def entry(classpath: Seq[File], f: DefinesClass): String => Option[URL] = {
+  def entry(classpath: Seq[File], f: DefinesClass): String => Option[ClassRef] = {
     val entries =
       classpath.toStream.map { file =>
         (file.toURI.toURL, f(file))
       }
-    def fn(className: String): Option[URL] =
+    def fn(className: String): Option[ClassRef] =
       entries.collect {
         case (url, defines) if defines(className) =>
           url.getProtocol match {
             case "jar" =>
-              new URL(url + "!/" + fromClassName(className))
+              ClassRef.Jarred(url, fromClassName(className))
             case _ =>
               url
           }
