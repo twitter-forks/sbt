@@ -5,7 +5,7 @@ package sbt
 package inc
 
 import java.io.{ File, FileNotFoundException, IOException }
-import xsbti.ClassRef
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
 import java.util.jar.JarFile
 import scala.collection.JavaConverters._
 import Stamp.getStamp
@@ -204,10 +204,10 @@ private class InitialStamps extends ReadStamps {
 
   private def lastModified(u: ClassRef): Stamp = Stamp.tryStamp {
     u match {
-      case ClassRefLoose(classfile) =>
-        lastModified(classfile)
-      case ClassRefJarred(jarFile, classfile) =>
-        lastModified(jarFile, classfile)
+      case cr: ClassRefLoose =>
+        lastModified(cr.classFile)
+      case cr: ClassRefJarred =>
+        lastModified(cr.jarFile, cr.classFile)
     }
   }
 

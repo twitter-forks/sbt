@@ -4,13 +4,12 @@
 package xsbt
 
 import scala.tools.nsc.{ io, symtab, Phase }
-import io.{ AbstractFile, PlainFile, ZipArchive }
 import symtab.Flags
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
 import xsbti.DependencyContext
 import xsbti.DependencyContext._
 
 import java.io.File
-import java.net.URL
 
 object Dependency {
   def name = "xsbt-dependency"
@@ -60,22 +59,14 @@ final class Dependency(val global: CallbackGlobal) extends LocateClassFile {
          * run) or from class file and calls respective callback method.
          */
         def processDependency(on: Symbol, context: DependencyContext): Unit = {
-          def binaryDependency(file: URL, className: String) = callback.binaryDependency(file, className, sourceFile, context)
+          def binaryDependency(ref: ClassRef, className: String) =
+            callback.binaryDependency(ref, className, sourceFile, context)
           val onSource = on.sourceFile
           if (onSource == null) {
             locator.classFile(on) match {
-              case Some((f, className, inOutDir)) =>
+              case Some((ref, className, inOutDir)) =>
                 if (inOutDir && on.isJavaDefined) registerTopLevelSym(on)
-                f match {
-                  case ze: ZipArchive#Entry =>
-                    for (zip <- ze.underlyingSource; zipFile <- Option(zip.file)) {
-                      binaryDependency(new URL("jar:file:" + zipFile + "!/" + ze.path), className)
-                    }
-                  case pf: PlainFile =>
-                    binaryDependency(pf.file.toURI.toURL, className)
-                  case _ =>
-                    ()
-                }
+                binaryDependency(ref, className)
               case None => ()
             }
           } else if (onSource.file != sourceFile)

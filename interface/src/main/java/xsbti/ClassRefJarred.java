@@ -2,8 +2,17 @@ package xsbti;
 
 import java.io.File;
 
-public interface ClassRefJarred extends ClassRef
+public final class ClassRefJarred implements ClassRef
 {
-  File jarFile();
-  String classFile();
+  public final File jarFile;
+  public final String classFile;
+
+  public ClassRefJarred(File jarFile, String classFile) {
+    this.jarFile = jarFile;
+    this.classFile = classFile;
+  }
+
+  public File containingFile() {
+    return jarFile;
+  }
 }

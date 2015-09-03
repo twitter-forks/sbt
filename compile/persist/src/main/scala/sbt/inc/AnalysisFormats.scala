@@ -5,12 +5,11 @@ package sbt
 package inc
 
 import xsbti.api.{ Source, Compilation }
-import xsbti.{ Position, Problem, Severity }
+import xsbti.{ ClassRef, Position, Problem, Severity }
 import xsbti.compile.{ CompileOrder, Output => APIOutput, SingleOutput, MultipleOutput }
 import xsbti.DependencyContext._
 import MultipleOutput.OutputGroup
 import java.io.File
-import java.net.URL
 import sbinary._
 import DefaultProtocol._
 import DefaultProtocol.tuple2Format
@@ -94,7 +93,7 @@ object AnalysisFormats {
     )(fileFormat)
   implicit val outputFormat: Format[APIOutput] = asUnion(singleOutputFormat, multipleOutputFormat)
 
-  implicit def stampsFormat(implicit prodF: Format[Map[URL, Stamp]], srcF: Format[Map[File, Stamp]], binF: Format[Map[URL, Stamp]], nameF: Format[Map[URL, String]]): Format[Stamps] =
+  implicit def stampsFormat(implicit prodF: Format[Map[ClassRef, Stamp]], srcF: Format[Map[File, Stamp]], binF: Format[Map[ClassRef, Stamp]], nameF: Format[Map[ClassRef, String]]): Format[Stamps] =
     asProduct4(Stamps.apply _)(s => (s.products, s.sources, s.binaries, s.classNames))(prodF, srcF, binF, nameF)
 
   implicit def stampFormat(implicit hashF: Format[Hash], modF: Format[LastModified], existsF: Format[Exists]): Format[Stamp] =

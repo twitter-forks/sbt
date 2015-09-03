@@ -5,7 +5,7 @@ package sbt
 package inc
 
 import xsbti.api.Source
-import xsbti.ClassRef
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
 import xsbti.DependencyContext._
 import java.io.File
 import java.net.URL
@@ -130,14 +130,14 @@ object Analysis {
       val (j, s) = a.apis.allInternalSources.partition(_.getName.endsWith(".java"))
       val c = a.stamps.allProducts
       val ext = a.apis.allExternals
-      val jars = a.relations.allBinaryDeps.collect { case ClassRefJarred(jarPath, _) => jarPath }
+      val classes = a.relations.allBinaryDeps
       val unreportedCount = a.infos.allInfos.values.map(_.unreportedProblems.size).sum
       val sections =
         counted("Scala source", "", "s", s.size) ++
           counted("Java source", "", "s", j.size) ++
           counted("class", "", "es", c.size) ++
           counted("external source dependenc", "y", "ies", ext.size) ++
-          counted("binary dependenc", "y", "ies", jars.size) ++
+          counted("binary dependenc", "y", "ies", classes.size) ++
           counted("unreported warning", "", "s", unreportedCount)
       sections.mkString("Analysis: ", ", ", "")
     }

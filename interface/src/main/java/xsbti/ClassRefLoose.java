@@ -2,7 +2,15 @@ package xsbti;
 
 import java.io.File;
 
-public interface ClassRefLoose extends ClassRef
+public final class ClassRefLoose implements ClassRef
 {
-  File classFile();
+  public final File classFile;
+
+  public ClassRefLoose(File classFile) {
+    this.classFile = classFile;
+  }
+
+  public File containingFile() {
+    return classFile;
+  }
 }

@@ -30,8 +30,8 @@ final class Analyzer(val global: CallbackGlobal) extends LocateClassFile {
         for (iclass <- unit.icode) {
           val sym = iclass.symbol
           def addGenerated(separatorRequired: Boolean): Unit = {
-            locator.getOutputClassURL(sym, separatorRequired).foreach { classURL =>
-              callback.generatedClass(sourceFile, classURL, className(sym, '.', separatorRequired))
+            locator.getOutputClass(sym, separatorRequired).foreach { classRef =>
+              callback.generatedClass(sourceFile, classRef, className(sym, '.', separatorRequired))
             }
           }
           if (sym.isModuleClass && !sym.isImplClass) {

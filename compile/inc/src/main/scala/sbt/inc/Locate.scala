@@ -4,7 +4,7 @@
 package sbt
 package inc
 
-import xsbti.ClassRef
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
 import java.io.{ IOException, File }
 import java.util.jar.JarFile
 
@@ -68,7 +68,7 @@ object Locate {
       val entries: Map[String, ClassRefJarred] =
         try {
           new JarFile(jarFile).entries.asScala.map { e =>
-            toClassName(e.getName, '/') -> ClassRefJarred(jarFile, e.getName)
+            toClassName(e.getName, '/') -> new ClassRefJarred(jarFile, e.getName)
           }.toMap
         } catch {
           case e: IOException =>
@@ -88,7 +88,7 @@ object Locate {
   def directoryDefinesClass(entry: File): String => Option[ClassRefLoose] = { className =>
     val path = new File(entry, fromClassName(className))
     if (path.isFile)
-      Some(ClassRefLoose(path))
+      Some(new ClassRefLoose(path))
     else
       None
   }

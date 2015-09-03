@@ -91,6 +91,6 @@ object AnalysisTest extends Properties("Analysis") {
       (left == right)
 
   def f(s: String) = new File(s)
-  def u(cls: String) = f(cls).toURI.toURL
-  def u(jar: String, cls: String) = new URL(s"jar:${f(jar).toURI.toURL}!/${cls}")
+  def u(cls: String) = ClassRefLoose(f(cls))
+  def u(jar: String, cls: String) = ClassRefJarred(f(jar), cls)
 }
