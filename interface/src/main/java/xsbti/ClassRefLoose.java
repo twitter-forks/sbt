@@ -13,4 +13,9 @@ public final class ClassRefLoose implements ClassRef
   public File containingFile() {
     return classFile;
   }
+
+  /** NB: Used in serialization of this class. */
+  public String toString() {
+    return ClassRefs.LOOSE + "(" + classFile + ")";
+  }
 }

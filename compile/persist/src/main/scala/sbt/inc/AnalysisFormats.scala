@@ -19,7 +19,7 @@ import Relations.{ Source => RSource, SourceDependencies }
 @deprecated("Replaced by TextAnalysisFormat. OK to remove in 0.14.", since = "0.13.1")
 object AnalysisFormats {
   type RFF = Relation[File, File]
-  type RFU = Relation[File, URL]
+  type RFR = Relation[File, ClassRef]
   type RFS = Relation[File, String]
 
   import System.{ currentTimeMillis => now }
@@ -102,9 +102,9 @@ object AnalysisFormats {
   implicit def apisFormat(implicit internalF: Format[Map[File, Source]], externalF: Format[Map[String, Source]]): Format[APIs] =
     asProduct2(APIs.apply _)(as => (as.internal, as.external))(internalF, externalF)
 
-  implicit def relationsFormat(implicit prodF: Format[RFU], binF: Format[RFU], directF: Format[RSource], inheritedF: Format[RSource], memberRefF: Format[SourceDependencies], inheritanceF: Format[SourceDependencies], csF: Format[RFS], namesF: Format[RFS]): Format[Relations] =
+  implicit def relationsFormat(implicit prodF: Format[RFR], binF: Format[RFR], directF: Format[RSource], inheritedF: Format[RSource], memberRefF: Format[SourceDependencies], inheritanceF: Format[SourceDependencies], csF: Format[RFS], namesF: Format[RFS]): Format[Relations] =
     {
-      def makeRelation(srcProd: RFU, binaryDep: RFU, direct: RSource, publicInherited: RSource,
+      def makeRelation(srcProd: RFR, binaryDep: RFR, direct: RSource, publicInherited: RSource,
         memberRef: SourceDependencies, inheritance: SourceDependencies, classes: RFS,
         nameHashing: Boolean, names: RFS): Relations = if (nameHashing) {
         def isEmpty(sourceDependencies: RSource): Boolean =
@@ -121,7 +121,7 @@ object AnalysisFormats {
         assert(isEmpty(memberRef), "Direct dependencies are not empty but `nameHashing` flag is enabled.")
         Relations.make(srcProd, binaryDep, direct, publicInherited, classes)
       }
-      asProduct9[Relations, RFU, RFU, RSource, RSource, SourceDependencies, SourceDependencies, RFS, Boolean, RFS]((a, b, c, d, e, f, g, h, i) => makeRelation(a, b, c, d, e, f, g, h, i))(
+      asProduct9[Relations, RFR, RFR, RSource, RSource, SourceDependencies, SourceDependencies, RFS, Boolean, RFS]((a, b, c, d, e, f, g, h, i) => makeRelation(a, b, c, d, e, f, g, h, i))(
         rs => (rs.srcProd, rs.binaryDep, rs.direct, rs.publicInherited, rs.memberRef, rs.inheritance, rs.classes, rs.nameHashing, rs.names))(
           prodF, binF, directF, inheritedF, memberRefF, inheritanceF, csF, implicitly[Format[Boolean]], namesF)
     }

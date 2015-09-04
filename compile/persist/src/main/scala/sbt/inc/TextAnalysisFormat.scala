@@ -2,8 +2,8 @@ package sbt
 package inc
 
 import java.io._
-import java.net.URL
 import sbt.{ CompileSetup, Relation }
+import xsbti.{ ClassRef, ClassRefs }
 import xsbti.api.{ Compilation, Source }
 import xsbti.compile.{ MultipleOutput, SingleOutput }
 import javax.xml.bind.DatatypeConverter
@@ -196,11 +196,11 @@ object TextAnalysisFormat {
 
     def read(in: BufferedReader): Stamps = {
       def s2f(s: String) = new File(s)
-      def s2u(s: String) = new URL(s)
-      val products = readMap(in)(Headers.products, s2u, Stamp.fromString)
+      def s2cr(s: String) = ClassRefs.fromString(s)
+      val products = readMap(in)(Headers.products, s2cr, Stamp.fromString)
       val sources = readMap(in)(Headers.sources, s2f, Stamp.fromString)
-      val binaries = readMap(in)(Headers.binaries, s2u, Stamp.fromString)
-      val classNames = readMap(in)(Headers.classNames, s2u, identity[String])
+      val binaries = readMap(in)(Headers.binaries, s2cr, Stamp.fromString)
+      val classNames = readMap(in)(Headers.classNames, s2cr, identity[String])
 
       Stamps(products, sources, binaries, classNames)
     }

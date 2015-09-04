@@ -15,4 +15,9 @@ public final class ClassRefJarred implements ClassRef
   public File containingFile() {
     return jarFile;
   }
+
+  /** NB: Used in serialization of this class. */
+  public String toString() {
+    return ClassRefs.JARRED + "(" + jarFile + "!" + classFile + ")";
+  }
 }
