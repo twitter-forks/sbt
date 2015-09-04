@@ -5,11 +5,10 @@ package sbt
 package inc
 
 import java.io.File
-import java.net.URL
 import Relations.Source
 import Relations.SourceDependencies
 import xsbti.api.{ Source => APISource }
-import xsbti.ClassRef
+import xsbti.{ ClassRef, ClassRefs }
 import xsbti.DependencyContext
 import xsbti.DependencyContext._
 
@@ -238,10 +237,10 @@ object Relations {
    */
   private[inc] val existingRelations = {
     val string2File: String => File = new File(_)
-    val string2URL: String => URL = new URL(_)
+    val string2Ref: String => ClassRef = ClassRefs.fromString(_)
     List(
-      ("products", string2URL),
-      ("binary dependencies", string2URL),
+      ("products", string2Ref),
+      ("binary dependencies", string2Ref),
       ("direct source dependencies", string2File),
       ("direct external dependencies", identity[String] _),
       ("public inherited source dependencies", string2File),

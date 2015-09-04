@@ -3,6 +3,7 @@ package inc
 
 import java.io.{ BufferedReader, File, StringReader, StringWriter }
 import scala.math.abs
+import xsbti.{ ClassRef, ClassRefLoose, ClassRefJarred }
 import org.scalacheck._
 import Gen._
 import Prop._
@@ -12,7 +13,7 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
   val nameHashing = true
   val dummyOutput = new xsbti.compile.SingleOutput { def outputLocation: java.io.File = new java.io.File("dummy") }
   val commonSetup = new CompileSetup(dummyOutput, new CompileOptions(Nil, Nil), "2.10.4", xsbti.compile.CompileOrder.Mixed, nameHashing)
-  val commonHeader = """format version: 5
+  val commonHeader = """format version: 6
                     |output mode:
                     |1 items
                     |0 -> single
@@ -34,7 +35,6 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
                     |0 -> true""".stripMargin
 
   property("Write and read empty Analysis") = {
-
     val writer = new StringWriter
     val analysis = Analysis.empty(nameHashing)
     TextAnalysisFormat.write(writer, analysis, commonSetup)
@@ -47,15 +47,11 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
     val (readAnalysis, readSetup) = TextAnalysisFormat.read(reader)
 
     analysis == readAnalysis
-
   }
 
   property("Write and read simple Analysis") = {
-
     import TestCaseGenerators._
 
-    def f(s: String) = new File(s)
-    def u(s: String) = f(s).toURI.toURL
     val aScala = f("A.scala")
     val bScala = f("B.scala")
     val aSource = genSource("A" :: "A$" :: Nil).sample.get
@@ -68,7 +64,7 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
     analysis = analysis.addProduct(aScala, u("A.class"), exists, "A")
     analysis = analysis.addProduct(aScala, u("A$.class"), exists, "A$")
     analysis = analysis.addSource(aScala, aSource, exists, Nil, Nil, sourceInfos)
-    analysis = analysis.addBinaryDep(aScala, u("x.jar"), "x", exists)
+    analysis = analysis.addBinaryDep(aScala, u("x.jar", "B.class"), "x", exists)
     analysis = analysis.addExternalDep(aScala, "C", cSource, inherited = false)
 
     val writer = new StringWriter
@@ -83,7 +79,6 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
     val (readAnalysis, readSetup) = TextAnalysisFormat.read(reader)
 
     compare(analysis, readAnalysis)
-
   }
 
   property("Write and read complex Analysis") = forAllNoShrink(TestCaseGenerators.genAnalysis(nameHashing)) { analysis: Analysis =>
@@ -100,6 +95,10 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
 
     compare(analysis, readAnalysis)
   }
+
+  def f(s: String) = new File(s)
+  def u(f: String) = new ClassRefLoose(new File(f))
+  def u(f: String, p: String) = new ClassRefJarred(new File(f), p)
 
   // Compare two analyses with useful labelling when they aren't equal.
   private[this] def compare(left: Analysis, right: Analysis): Prop =

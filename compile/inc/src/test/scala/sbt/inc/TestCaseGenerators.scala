@@ -9,7 +9,7 @@ import Gen._
 
 import sbt.Relation
 import xsbti.api._
-import xsbti.{ ClassRef, SafeLazy }
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose, SafeLazy }
 import xsbti.DependencyContext._
 
 /**
@@ -64,9 +64,9 @@ object TestCaseGenerators {
     innerFile <- genPath(".class")
   } yield {
     if (isJar)
-      ClassRefJarred(outerFile, innerFile)
+      new ClassRefJarred(outerFile, innerFile)
     else
-      ClassRefLoose(outerFile)
+      new ClassRefLoose(outerFile)
   }
 
   def genStamp: Gen[Stamp] = for {
