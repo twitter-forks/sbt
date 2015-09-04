@@ -1,12 +1,15 @@
 package xsbti.compile;
 
+import xsbti.ClassRef;
+import xsbti.Maybe;
+
 /**
 * Determines if an entry on a classpath contains a class.
 */
 public interface DefinesClass
 {
  	/**
-	* Returns true if the classpath entry contains the requested class.
+	* Returns a classpath entry for the requested class.
 	*/
-	boolean apply(String className);
+	Maybe<ClassRef> apply(String className);
 }

@@ -1,7 +1,6 @@
 package sbt.compiler.javac
 
 import java.io.File
-import java.net.URL
 
 import sbt._
 import sbt.classfile.Analyze
@@ -10,20 +9,20 @@ import sbt.compiler.CompilerArguments
 import sbt.inc.Locate
 import xsbti.api.Source
 import xsbti.compile._
-import xsbti.{ AnalysisCallback, Reporter }
+import xsbti.{ AnalysisCallback, ClassRef, Reporter }
 
 /**
  * This is a java compiler which will also report any discovered source dependencies/apis out via
  * an analysis callback.
  *
  * @param searchClasspath Differes from classpath in that we look up binary dependencies via this classpath.
- * @param classLookup A mechanism by which we can figure out if a JAR contains a classfile.
+ * @param classLookup A mechanism by which we can figure out whether any classpath entry contains a classfile.
  */
 final class AnalyzingJavaCompiler private[sbt] (
     val javac: xsbti.compile.JavaCompiler,
     val classpath: Seq[File],
     val scalaInstance: xsbti.compile.ScalaInstance,
-    val classLookup: (String => Option[URL]),
+    val classLookup: (String => Option[ClassRef]),
     val searchClasspath: Seq[File]) {
   /**
    * Compile some java code using the current configured compiler.

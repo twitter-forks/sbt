@@ -34,18 +34,20 @@ object Locate {
   /**
    * Returns a function that searches the provided class path for
    * a class name and returns the entry that defines that class.
-   * def entry(classpath: Seq[File], f: DefinesClass): String => Option[ClassRef] = {
-   * val entries =
-   * classpath.map { file =>
-   * (file, f(file))
-   * }.toStream
-   * def fn(className: String): Option[ClassRef] =
-   * entries.flatMap {
-   * case (file, defines) => defines(className)
-   * }.headOption
-   * fn
-   * }
-   *
+   */
+  def entry(classpath: Seq[File], f: DefinesClass): String => Option[ClassRef] = {
+    val entries =
+      classpath.map { file =>
+        (file, f(file))
+      }.toStream
+    def fn(className: String): Option[ClassRef] =
+      entries.flatMap {
+        case (file, defines) => defines(className)
+      }.headOption
+    fn
+  }
+
+  /**
    * def getValue[S](get: File => String => Option[S])(entry: File): String => Either[Boolean, S] =
    * {
    * val defClass = definesClass(entry)

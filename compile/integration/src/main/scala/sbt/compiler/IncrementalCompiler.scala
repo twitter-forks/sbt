@@ -6,6 +6,7 @@ import sbt.inc.Locate._
 import sbt._
 import sbt.inc._
 import xsbti.Logger
+import xsbti.ClassRef
 import xsbti.api.Source
 import xsbti.compile.ClasspathOptions
 import xsbti.compile.CompileOrder._
@@ -31,7 +32,7 @@ object IC extends IncrementalCompiler[Analysis, AnalyzingCompiler] {
       val options = in.options; import options.{ options => scalacOptions, _ }
       val compilers = in.compilers; import compilers._
       val aMap = (f: File) => m2o(analysisMap(f))
-      val defClass = (f: File) => { val dc = definesClass(f); (name: String) => dc.apply(name) }
+      val defClass = (f: File) => { val dc = definesClass(f); (name: String) => m2o(dc.apply(name)) }
       val incOptions = IncOptions.fromStringMap(incrementalCompilerOptions)
       val (previousAnalysis, previousSetup) = {
         MixedAnalyzingCompiler.staticCachedStore(setup.cacheFile()).get().map {
