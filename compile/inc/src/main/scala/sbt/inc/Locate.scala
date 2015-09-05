@@ -12,27 +12,7 @@ object Locate {
   type DefinesClass = File => String => Option[ClassRef]
 
   /**
-   * Right(src) provides the value for the found class
-   * Left(true) means that the class was found, but it had no associated value
-   * Left(false) means that the class was not found
-   * def value[S](classpath: Seq[File], get: File => String => Option[S]): String => Either[Boolean, S] =
-   * {
-   * val gets = classpath.toStream.map(getValue(get))
-   * className => find(className, gets)
-   * }
-   *
-   * def find[S](name: String, gets: Stream[String => Either[Boolean, S]]): Either[Boolean, S] =
-   * if (gets.isEmpty)
-   * Left(false)
-   * else
-   * gets.head(name) match {
-   * case Left(false) => find(name, gets.tail)
-   * case x           => x
-   * }
-   */
-
-  /**
-   * Returns a function that searches the provided class path for
+   * Returns a function that searches the provided classpath for
    * a class name and returns the entry that defines that class.
    */
   def entry(classpath: Seq[File], f: DefinesClass): String => Option[ClassRef] = {
@@ -46,15 +26,6 @@ object Locate {
       }.headOption
     fn
   }
-
-  /**
-   * def getValue[S](get: File => String => Option[S])(entry: File): String => Either[Boolean, S] =
-   * {
-   * val defClass = definesClass(entry)
-   * val getF = get(entry)
-   * className => if (defClass(className)) getF(className).toRight(true) else Left(false)
-   * }
-   */
 
   def definesClass(entry: File): String => Option[ClassRef] =
     if (entry.isDirectory)
