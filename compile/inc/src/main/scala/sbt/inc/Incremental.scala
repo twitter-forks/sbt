@@ -36,7 +36,6 @@ object Incremental {
    *         A flag of whether or not compilation completed succesfully, and the resulting dependency analysis object.
    */
   def compile(sources: Set[File],
-    // TODO: unsure.
     entry: String => Option[ClassRef],
     previous: Analysis,
     current: ReadStamps,
