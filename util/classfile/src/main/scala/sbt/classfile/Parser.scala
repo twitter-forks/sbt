@@ -5,7 +5,9 @@ package sbt
 package classfile
 
 import java.io.{ DataInputStream, File, InputStream }
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
 import scala.annotation.switch
+import java.util.zip.{ ZipEntry }
 
 // Translation of jdepend.framework.ClassFileParser by Mike Clark, Clarkware Consulting, Inc.
 // BSD Licensed
@@ -15,15 +17,26 @@ import scala.annotation.switch
 import Constants._
 
 private[sbt] object Parser {
-  def apply(file: File): ClassFile = Using.fileInputStream(file)(parse(file.getAbsolutePath)).right.get
+  def apply(file: File): ClassFile =
+    Using.fileInputStream(file)(parse(file.getAbsolutePath)).right.get
+
+  def apply(jarFile: File, entry: String): ClassFile =
+    Using.zipEntry(jarFile)(entry)(parse(entry)).right.get
+
+  def apply(cr: ClassRef): ClassFile = cr match {
+    case crl: ClassRefLoose =>
+      apply(crl.classFile)
+    case crj: ClassRefJarred =>
+      apply(crj.jarFile, crj.classFile)
+  }
+
   private def parse(fileName: String)(is: InputStream): Either[String, ClassFile] = Right(parseImpl(fileName, is))
-  private def parseImpl(filename: String, is: InputStream): ClassFile =
+  private def parseImpl(fileName: String, is: InputStream): ClassFile =
     {
       val in = new DataInputStream(is)
-      new ClassFile {
-        assume(in.readInt() == JavaMagic, "Invalid class file: " + fileName)
+      assume(in.readInt() == JavaMagic, "Invalid class file: " + fileName)
 
-        val fileName = filename
+      new ClassFile {
         val minorVersion: Int = in.readUnsignedShort()
         val majorVersion: Int = in.readUnsignedShort()
 

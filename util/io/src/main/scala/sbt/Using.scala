@@ -79,7 +79,7 @@ object Using {
   def fileReader(charset: Charset) = file(f => new BufferedReader(new InputStreamReader(new FileInputStream(f), charset)))
   def urlReader(charset: Charset) = resource((u: URL) => new BufferedReader(new InputStreamReader(u.openStream, charset)))
   def jarFile(verify: Boolean) = file(f => new JarFile(f, verify), (_: JarFile).close())
-  def zipFile = file(f => new ZipFile(f), (_: ZipFile).close())
+  def zipFile: Using[File,ZipFile] = file(f => new ZipFile(f), (_: ZipFile).close())
   def streamReader = wrap { (_: (InputStream, Charset)) match { case (in, charset) => new InputStreamReader(in, charset) } }
   def gzipInputStream = wrap((in: InputStream) => new GZIPInputStream(in, 8192))
   def zipInputStream = wrap((in: InputStream) => new ZipInputStream(in))
@@ -87,6 +87,13 @@ object Using {
   def gzipOutputStream = wrap((out: OutputStream) => new GZIPOutputStream(out, 8192), (_: GZIPOutputStream).finish())
   def jarOutputStream = wrap((out: OutputStream) => new JarOutputStream(out))
   def jarInputStream = wrap((in: InputStream) => new JarInputStream(in))
-  def zipEntry(zip: ZipFile) = resource((entry: ZipEntry) =>
-    translate("Error opening " + entry.getName + " in " + zip + ": ") { zip.getInputStream(entry) })
+
+  def zipEntry(file: File) =
+    zipFile(file) { (zf: ZipFile) =>
+      resource { (entry: String) =>
+        translate("Error opening " + entry + " in " + zf + ": ") {
+          zf.getInputStream(zf.getEntry(entry))
+        }
+      }
+    }
 }
