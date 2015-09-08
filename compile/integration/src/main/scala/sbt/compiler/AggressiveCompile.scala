@@ -15,7 +15,7 @@ import inc.IncOptions
 import CompileSetup._
 import sbinary.DefaultProtocol.{ immutableMapFormat, immutableSetFormat, StringFormat }
 
-import xsbti.{ AnalysisCallback, DirectoryOutputLocation, OutputLocation, Reporter }
+import xsbti.{ AnalysisCallback, ClassRefLoose, DirectoryOutputLocation, OutputLocation, Reporter }
 import xsbti.api.Source
 import xsbti.compile.{ CompileOrder, DependencyChanges, GlobalsCache, Output, SingleOutput, MultipleOutput, CompileProgress }
 import CompileOrder.{ JavaThenScala, Mixed, ScalaThenJava }
@@ -102,7 +102,12 @@ class AggressiveCompile(cacheFile: File) {
               if (f2 eq null) false else if (f1 == f2) true else ancestor(f1, f2.getParentFile)
 
             val chunks: Map[Option[File], Seq[File]] = output match {
-              case single: SingleOutput => Map(Some(single.outputLocation) -> javaSrcs)
+              case single: SingleOutput =>
+                require(
+                  !single.outputLocation.getName.endsWith(".jar"),
+                  "Jar outputs not supported for AggressiveCompile: use AnalyzingJavaCompiler"
+                )
+                Map(Some(single.outputLocation) -> javaSrcs)
               case multi: MultipleOutput =>
                 javaSrcs groupBy { src =>
                   multi.outputGroups find { out => ancestor(out.sourceDirectory, src) } map (_.outputDirectory)
@@ -135,7 +140,8 @@ class AggressiveCompile(cacheFile: File) {
             timed("Java analysis", log) {
               for ((classesFinder, oldClasses, srcs) <- memo) {
                 val newClasses = Set(classesFinder.get: _*) -- oldClasses
-                Analyze(newClasses.toSeq, srcs, log)(callback, loader, readAPI)
+                // TODO: support Jar outputs for javac
+                Analyze(newClasses.map(new ClassRefLoose(_)).toSeq, srcs, log)(callback, loader, readAPI)
               }
             }
           }

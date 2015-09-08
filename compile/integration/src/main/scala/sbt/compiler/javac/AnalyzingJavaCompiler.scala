@@ -9,7 +9,7 @@ import sbt.compiler.CompilerArguments
 import sbt.inc.Locate
 import xsbti.api.Source
 import xsbti.compile._
-import xsbti.{ AnalysisCallback, ClassRef, Reporter }
+import xsbti.{ AnalysisCallback, ClassRef, ClassRefLoose, Reporter }
 
 /**
  * This is a java compiler which will also report any discovered source dependencies/apis out via
@@ -53,40 +53,58 @@ final class AnalyzingJavaCompiler private[sbt] (
       chunks.get(None) foreach { srcs =>
         log.error("No output directory mapped for: " + srcs.map(_.getAbsolutePath).mkString(","))
       }
-      // Here we try to memoize (cache) the known class files in the output directory.
-      val memo = for ((Some(outputDirectory), srcs) <- chunks) yield {
-        val classesFinder = PathFinder(outputDirectory) ** "*.class"
-        (classesFinder, classesFinder.get, srcs)
-      }
-      // Here we construct a class-loader we'll use to load + analyze the
-      val loader = ClasspathUtilities.toLoader(searchClasspath)
-      // TODO - Perhaps we just record task 0/2 here
-      timed("Java compilation", log) {
+
+      analyzed(chunks, callback, log) {
+        // TODO - Perhaps we just record task 0/2 here
         try javac.compileWithReporter(sources.toArray, absClasspath.toArray, output, options.toArray, reporter, log)
         catch {
           // Handle older APIs
           case _: NoSuchMethodError =>
             javac.compile(sources.toArray, absClasspath.toArray, output, options.toArray, log)
         }
+        // TODO - Perhaps we just record task 1/2 here
       }
-      // TODO - Perhaps we just record task 1/2 here
+      // TODO - Perhaps we just record task 2/2 here
+    }
+  }
 
-      /** Reads the API information directly from the Class[_] object. Used when Analyzing dependencies. */
+  /** Wraps a compile operation with analysis of outputs based on diffing old vs new classfiles. */
+  private[this] def analyzed[T](chunks: Map[Option[File], Seq[File]], callback: AnalysisCallback, log: Logger)(executeCompile: => T): T = {
+    // Memoize the known classfiles in the output directory to determine which classfiles
+    // were added by the compile
+    val memo: Iterable[(() => Seq[ClassRef], Seq[ClassRef], Seq[File])] =
+      for ((Some(outputDirectory), srcs) <- chunks) yield {
+        // TODO: support Jar outputs for javac
+        def classesFinder() = (PathFinder(outputDirectory) ** "*.class").get.map(new ClassRefLoose(_))
+        (classesFinder _, classesFinder(), srcs)
+      }
+    // Here we construct a class-loader we'll use to find dependencies
+    val loader = ClasspathUtilities.toLoader(searchClasspath)
+
+    // Execute the analyzed operation
+    val result =
+      timed("Java compilation", log) {
+        executeCompile
+      }
+
+    // Runs the analysis portion of Javac.
+    timed("Java analysis", log) {
+      // Reads the API information directly from the Class[_] object
       def readAPI(source: File, classes: Seq[Class[_]]): Set[String] = {
         val (api, inherits) = ClassToAPI.process(classes)
         callback.api(source, api)
         inherits.map(_.getName)
       }
-      // Runs the analysis portion of Javac.
-      timed("Java analysis", log) {
-        for ((classesFinder, oldClasses, srcs) <- memo) {
-          val newClasses = Set(classesFinder.get: _*) -- oldClasses
-          Analyze(newClasses.toSeq, srcs, log)(callback, loader, readAPI)
-        }
+
+      // Analyze each chunk by comparing old and new classes
+      for ((classesFinder, oldClasses, srcs) <- memo) {
+        val newClasses = classesFinder().toSet -- oldClasses
+        Analyze(newClasses.toSeq, srcs, log)(callback, loader, readAPI)
       }
-      // TODO - Perhaps we just record task 2/2 here
     }
+    result
   }
+
   /** Debugging method to time how long it takes to run various compilation tasks. */
   private[this] def timed[T](label: String, log: Logger)(t: => T): T = {
     val start = System.nanoTime
