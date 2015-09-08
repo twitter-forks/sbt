@@ -12,7 +12,7 @@ import java.lang.annotation.Annotation
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier.{ STATIC, PUBLIC, ABSTRACT }
 import java.net.URL
-import xsbti.{ ClassRef, DependencyContext }
+import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose, DependencyContext }
 import xsbti.DependencyContext._
 
 private[sbt] object Analyze {
@@ -23,7 +23,7 @@ private[sbt] object Analyze {
       try { Some(Class.forName(tpe, false, loader)) }
       catch { case e: Throwable => errMsg.foreach(msg => log.warn(msg + " : " + e.toString)); None }
 
-    val productToSource = new mutable.HashMap[File, File]
+    val productToSource = new mutable.HashMap[ClassRef, File]
     val sourceToClassFiles = new mutable.HashMap[File, Buffer[ClassFile]]
 
     // parse class files and assign classes to sources.  This must be done before dependencies, since the information comes
@@ -31,11 +31,10 @@ private[sbt] object Analyze {
     for (
       newClass <- newClasses;
       classFile = Parser(newClass);
-      sourceFile <- classFile.sourceFile orElse guessSourceName(newClass.getName);
+      sourceFile <- classFile.sourceFile orElse guessSourceName(newClass);
       source <- guessSourcePath(sourceMap, classFile, log)
     ) {
-      // FIXME: XXX: will need to support jar outputs here.
-      // analysis.generatedClass(source, newClass, classFile.className)
+      analysis.generatedClass(source, newClass, classFile.className)
       assert(false, "Analysis generation is disabled for Java!")
       productToSource(newClass) = source
       sourceToClassFiles.getOrElseUpdate(source, new ArrayBuffer[ClassFile]) += classFile
@@ -47,20 +46,21 @@ private[sbt] object Analyze {
 
       def processDependency(tpe: String, context: DependencyContext): Unit = {
         trapAndLog(log) {
-          for (url <- Option(loader.getResource(tpe.replace('.', '/') + ClassExt)); file <- urlAsFile(url, log)) {
-            if (url.getProtocol == "jar") {
-              // FIXME: XXX: re-enable for java
-              //analysis.binaryDependency(file, tpe, source, context)
-              assert(false, "Analysis generation is disabled for Java!")
-            } else {
-              assume(url.getProtocol == "file")
-              productToSource.get(file) match {
-                case Some(dependsOn) => analysis.sourceDependency(dependsOn, source, context)
-                case None =>
-                  // FIXME: XXX: re-enable for java
-                  //analysis.binaryDependency(file, tpe, source, context)
-                  assert(false, "Analysis generation is disabled for Java!")
+          val classFileName = tpe.replace('.', '/') + ClassExt
+          for (url <- Option(loader.getResource(classFileName)); file <- urlAsFile(url, log)) {
+            val classRef =
+              if (url.getProtocol == "jar") {
+                new ClassRefJarred(file, classFileName)
+              } else {
+                assume(url.getProtocol == "file")
+                new ClassRefLoose(file)
               }
+
+            productToSource.get(classRef) match {
+              case Some(dependsOn) =>
+                analysis.sourceDependency(dependsOn, source, context)
+              case None =>
+                analysis.binaryDependency(classRef, tpe, source, context)
             }
           }
         }
@@ -87,14 +87,33 @@ private[sbt] object Analyze {
     try { execute }
     catch { case e: Throwable => log.trace(e); log.error(e.toString) }
   }
-  private def guessSourceName(name: String) = Some(takeToDollar(trimClassExt(name)))
-  private def takeToDollar(name: String) =
-    {
+  private def guessSourceName(cr: ClassRef) = {
+    def takeFromSlash(name: String) = {
+      val slash = name.indexOf('/')
+      if (slash < 0) name else name.substring(slash + 1)
+    }
+    def takeToDollar(name: String) = {
       val dollar = name.indexOf('$')
       if (dollar < 0) name else name.substring(0, dollar)
     }
+    def trimClassExt(name: String) =
+      if (name.endsWith(ClassExt)) {
+        name.substring(0, name.length - ClassExt.length)
+      } else {
+        name
+      }
+    val name =
+      cr match {
+        case crl: ClassRefLoose =>
+          crl.classFile.getName
+        case crj: ClassRefJarred =>
+          // jars always use '/' as the file separator
+          takeFromSlash(crj.classFile)
+      }
+
+    Some(takeToDollar(trimClassExt(name)))
+  }
   private final val ClassExt = ".class"
-  private def trimClassExt(name: String) = if (name.endsWith(ClassExt)) name.substring(0, name.length - ClassExt.length) else name
   private def guessSourcePath(sourceNameMap: Map[String, Set[File]], classFile: ClassFile, log: Logger) =
     {
       val classNameParts = classFile.className.split("""\.""")
