@@ -1,6 +1,7 @@
 package sbt.compiler.javac
 
 import java.io.File
+import collection.JavaConverters._
 
 import sbt._
 import sbt.classfile.Analyze
@@ -9,7 +10,7 @@ import sbt.compiler.CompilerArguments
 import sbt.inc.Locate
 import xsbti.api.Source
 import xsbti.compile._
-import xsbti.{ AnalysisCallback, ClassRef, ClassRefLoose, Reporter }
+import xsbti.{ AnalysisCallback, ClassRef, ClassRefLoose, ClassRefJarred, Reporter }
 
 /**
  * This is a java compiler which will also report any discovered source dependencies/apis out via
@@ -24,6 +25,40 @@ final class AnalyzingJavaCompiler private[sbt] (
     val scalaInstance: xsbti.compile.ScalaInstance,
     val classLookup: (String => Option[ClassRef]),
     val searchClasspath: Seq[File]) {
+
+  sealed private trait OutputChunk {
+    val outputLocation: File
+    /** The source files owned by the chunk */
+    val sources: Seq[File]
+    /** The classes at the output location at construction time. */
+    val oldClasses: Seq[ClassRef] = getCurrentClasses()
+    /** Computes the _current_ classes at this output location. */
+    def getCurrentClasses(): Seq[ClassRef]
+  }
+
+  private object OutputChunk {
+    /** Capture the current outputs in the given location. */
+    def apply(outputLocation: File, sources: Seq[File]): OutputChunk =
+      if (outputLocation.isFile && outputLocation.getName.endsWith(".jar")) {
+        Jar(outputLocation, sources)
+      } else {
+        Directory(outputLocation, sources)
+      }
+
+    case class Directory(outputLocation: File, sources: Seq[File]) extends OutputChunk {
+      def getCurrentClasses(): Seq[ClassRef] =
+        (PathFinder(outputLocation) ** "*.class").get.map(new ClassRefLoose(_))
+    }
+    case class Jar(outputLocation: File, sources: Seq[File]) extends OutputChunk {
+      def getCurrentClasses(): Seq[ClassRef] =
+        Using.jarFile(false)(outputLocation) { jf =>
+          jf.entries.asScala.map { je =>
+            new ClassRefJarred(outputLocation, je.getName)
+          }.toSeq
+        }
+    }
+  }
+
   /**
    * Compile some java code using the current configured compiler.
    *
@@ -40,69 +75,58 @@ final class AnalyzingJavaCompiler private[sbt] (
       val absClasspath = classpath.map(_.getAbsoluteFile)
       @annotation.tailrec def ancestor(f1: File, f2: File): Boolean =
         if (f2 eq null) false else if (f1 == f2) true else ancestor(f1, f2.getParentFile)
+
+      // TODO - Perhaps we just record task 0 here
+
       // Here we outline "chunks" of compiles we need to run so that the .class files end up in the right
-      // location for Java.
-      val chunks: Map[Option[File], Seq[File]] = output match {
-        case single: SingleOutput => Map(Some(single.outputLocation) -> sources)
-        case multi: MultipleOutput =>
-          sources groupBy { src =>
-            multi.outputGroups find { out => ancestor(out.sourceDirectory, src) } map (_.outputDirectory)
-          }
-      }
-      // Report warnings about source files that have no output directory.
-      chunks.get(None) foreach { srcs =>
-        log.error("No output directory mapped for: " + srcs.map(_.getAbsolutePath).mkString(","))
-      }
-
-      analyzed(chunks, callback, log) {
-        // TODO - Perhaps we just record task 0/2 here
-        try javac.compileWithReporter(sources.toArray, absClasspath.toArray, output, options.toArray, reporter, log)
-        catch {
-          // Handle older APIs
-          case _: NoSuchMethodError =>
-            javac.compile(sources.toArray, absClasspath.toArray, output, options.toArray, log)
+      // location for Java. This also captures the known classfiles in the output directory to determine
+      // which classfiles were added by the compile.
+      val chunks =
+        output match {
+          case single: SingleOutput =>
+            Seq(OutputChunk(single.outputLocation, sources))
+          case multi: MultipleOutput =>
+            sources.groupBy { src =>
+              multi.outputGroups find { out => ancestor(out.sourceDirectory, src) } map (_.outputDirectory)
+            }.flatMap {
+              case (None, srcs) =>
+                // Report warnings about source files that have no output directory.
+                // TODO: silently dropping analysis is odd...
+                log.error("No output directory mapped for: " + srcs.map(_.getAbsolutePath).mkString(","))
+                None
+              case (Some(outputLocation), srcs) =>
+                Some(OutputChunk(outputLocation, srcs))
+            }
         }
-        // TODO - Perhaps we just record task 1/2 here
+      // Construct a class-loader we'll use to find dependencies
+      val loader = ClasspathUtilities.toLoader(searchClasspath)
+
+      // Execute the compilation
+      // TODO - Perhaps we just record task 1 here
+      try javac.compileWithReporter(sources.toArray, absClasspath.toArray, output, options.toArray, reporter, log)
+      catch {
+        // Handle older APIs
+        case _: NoSuchMethodError =>
+          javac.compile(sources.toArray, absClasspath.toArray, output, options.toArray, log)
       }
-      // TODO - Perhaps we just record task 2/2 here
+      // TODO - Perhaps we just record task 2 here
+
+      // Runs the analysis portion of Javac.
+      timed("Java analysis", log) {
+        // Reads the API information directly from the Class[_] object
+        def readAPI(source: File, classes: Seq[Class[_]]): Set[String] = {
+          val (api, inherits) = ClassToAPI.process(classes)
+          callback.api(source, api)
+          inherits.map(_.getName)
+        }
+
+        // Analyze each chunk by comparing old and new classes
+        chunks.foreach { outputChunk =>
+          Analyze(outputChunk.getCurrentClasses().toSeq, outputChunk.sources, log)(callback, loader, readAPI)
+        }
+      }
+      // TODO - Perhaps we just record task 3 here
     }
-  }
-
-  /** Wraps a compile operation with analysis of outputs based on diffing old vs new classfiles. */
-  private[this] def analyzed[T](chunks: Map[Option[File], Seq[File]], callback: AnalysisCallback, log: Logger)(executeCompile: => T): T = {
-    // Memoize the known classfiles in the output directory to determine which classfiles
-    // were added by the compile
-    val memo: Iterable[(() => Seq[ClassRef], Seq[ClassRef], Seq[File])] =
-      for ((Some(outputDirectory), srcs) <- chunks) yield {
-        // TODO: support Jar outputs for javac
-        def classesFinder() = (PathFinder(outputDirectory) ** "*.class").get.map(new ClassRefLoose(_))
-        (classesFinder _, classesFinder(), srcs)
-      }
-    // Here we construct a class-loader we'll use to find dependencies
-    val loader = ClasspathUtilities.toLoader(searchClasspath)
-
-    // Execute the analyzed operation
-    val result =
-      timed("Java compilation", log) {
-        executeCompile
-      }
-
-    // Runs the analysis portion of Javac.
-    timed("Java analysis", log) {
-      // Reads the API information directly from the Class[_] object
-      def readAPI(source: File, classes: Seq[Class[_]]): Set[String] = {
-        val (api, inherits) = ClassToAPI.process(classes)
-        callback.api(source, api)
-        inherits.map(_.getName)
-      }
-
-      // Analyze each chunk by comparing old and new classes
-      for ((classesFinder, oldClasses, srcs) <- memo) {
-        val newClasses = classesFinder().toSet -- oldClasses
-        Analyze(newClasses.toSeq, srcs, log)(callback, loader, readAPI)
-      }
-    }
-    result
   }
 
   /** Debugging method to time how long it takes to run various compilation tasks. */
