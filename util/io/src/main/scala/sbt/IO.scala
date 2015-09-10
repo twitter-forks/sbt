@@ -16,6 +16,7 @@ import java.util.zip.{ CRC32, GZIPOutputStream, ZipEntry, ZipFile, ZipInputStrea
 import scala.collection.immutable.TreeSet
 import scala.collection.mutable.{ HashMap, HashSet }
 import scala.reflect.{ Manifest => SManifest }
+import scala.annotation.tailrec
 import Function.tupled
 
 /** A collection of File, URL, and I/O utility methods.*/
@@ -35,6 +36,9 @@ object IO {
   val Newline = System.getProperty("line.separator")
 
   val utf8 = Charset.forName("UTF-8")
+
+  // The CRC32 for an empty value, needed to store directories in zip files
+  val EmptyCRC32 = new CRC32().getValue()
 
   /**
    * Returns a URL for the directory or jar containing the the class file `cl`.
@@ -223,6 +227,7 @@ object IO {
   private def extract(from: ZipInputStream, toDirectory: File, filter: NameFilter, preserveLastModified: Boolean) =
     {
       val set = new HashSet[File]
+      @tailrec
       def next(): Unit = {
         val entry = from.getNextEntry
         if (entry == null)
@@ -289,6 +294,7 @@ object IO {
   private def transferImpl(in: InputStream, out: OutputStream, close: Boolean): Unit = {
     try {
       val buffer = new Array[Byte](BufferSize)
+      @tailrec
       def read(): Unit = {
         val byteCount = in.read(buffer)
         if (byteCount >= 0) {
@@ -301,12 +307,33 @@ object IO {
   }
 
   /**
+   * Transfers jar contents from the current position of an input Jar stream to the current
+   * position of an output Jar stream, while applying a filter.
+   */
+  @tailrec
+  def transfer(in: JarInputStream, out: JarOutputStream, filter: JarEntry => Boolean = Function.const(true)): Unit = {
+    val entry = in.getNextJarEntry
+    if (entry != null) {
+      if (filter(entry)) {
+        out.putNextEntry(entry)
+        transfer(in, out)
+        out.closeEntry()
+      }
+      in.closeEntry()
+      transfer(in, out, filter)
+    }
+  }
+
+  /**
    * Creates a temporary directory and provides its location to the given function.  The directory
    * is deleted after the function returns.
    */
   def withTemporaryDirectory[T](action: File => T): T =
+    withTemporaryDirectory(temporaryDirectory)(action)
+
+  def withTemporaryDirectory[T](parent: File)(action: File => T): T =
     {
-      val dir = createTemporaryDirectory
+      val dir = createUniqueDirectory(parent)
       try { action(dir) }
       finally { delete(dir) }
     }
@@ -335,7 +362,7 @@ object IO {
    * Creates a file in the default temporary directory, calls `action` with the file, deletes the file, and returns the result of calling `action`.
    * The name of the file will begin with `prefix`, which must be at least three characters long, and end with `postfix`, which has no minimum length.
    */
-  def withTemporaryFile[T](prefix: String, postfix: String)(action: File => T): T =
+  def withTemporaryFile[T](prefix: String, postfix: String, parent: File = temporaryDirectory)(action: File => T): T =
     {
       val file = File.createTempFile(prefix, postfix)
       try { action(file) }
@@ -434,8 +461,6 @@ object IO {
     val files = sources.flatMap { case (file, name) => if (file.isFile) (file, normalizeName(name)) :: Nil else Nil }
 
     val now = System.currentTimeMillis
-    // The CRC32 for an empty value, needed to store directories in zip files
-    val emptyCRC = new CRC32().getValue()
 
     def addDirectoryEntry(name: String): Unit = {
       output putNextEntry makeDirectoryEntry(name)
@@ -449,7 +474,7 @@ object IO {
         e setTime now
         e setSize 0
         e setMethod ZipEntry.STORED
-        e setCrc emptyCRC
+        e setCrc EmptyCRC32
         e
       }
 
@@ -518,6 +543,21 @@ object IO {
       finally { zipOut.close }
     }
   }
+
+  /** Creates a ZipEntry for the given File, relative to the given base File. */
+  def zipEntry(base: File, file: File, nowMillis: => Long = System.currentTimeMillis): Option[ZipEntry] =
+    relativize(base, file).map { relPath =>
+      val e = new ZipEntry(relPath.replace(File.separatorChar, '/'))
+      if (file.isDirectory) {
+        e setTime nowMillis
+        e setSize 0
+        e setMethod ZipEntry.STORED
+        e setCrc EmptyCRC32
+      } else {
+        e setTime file.lastModified
+      }
+      e
+    }
 
   /**
    * Returns the relative file for `file` relative to directory `base` or None if `base` is not a parent of `file`.
@@ -606,6 +646,7 @@ object IO {
         // maximum bytes per transfer according to  from http://dzone.com/snippets/java-filecopy-using-nio
         val max = (64 * 1024 * 1024) - (32 * 1024)
         val total = in.size
+        @tailrec
         def loop(offset: Long): Long =
           if (offset < total)
             loop(offset + out.transferFrom(in, offset, max))

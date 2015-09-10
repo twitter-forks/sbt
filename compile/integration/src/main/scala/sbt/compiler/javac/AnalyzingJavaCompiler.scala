@@ -1,6 +1,6 @@
 package sbt.compiler.javac
 
-import java.io.File
+import java.io.{ File, IOException }
 import collection.JavaConverters._
 
 import sbt._
@@ -27,34 +27,83 @@ final class AnalyzingJavaCompiler private[sbt] (
     val searchClasspath: Seq[File]) {
 
   sealed private trait OutputChunk {
-    val outputLocation: File
     /** The source files owned by the chunk */
-    val sources: Seq[File]
-    /** The classes at the output location at construction time. */
-    val oldClasses: Seq[ClassRef] = getCurrentClasses()
-    /** Computes the _current_ classes at this output location. */
-    def getCurrentClasses(): Seq[ClassRef]
+    def sources: Seq[File]
+    /** The final Output location of this chunk. */
+    def output: SingleOutput
+    /** The File for the output location of this chunk. */
+    def outputFile: File = output.outputLocation
+    /**
+     * Executes the given function in the context of a compilation, and returns the classfiles
+     * that were created.
+     */
+    def capture(f: SingleOutput => Unit): Seq[ClassRef]
   }
 
   private object OutputChunk {
     /** Capture the current outputs in the given location. */
-    def apply(outputLocation: File, sources: Seq[File]): OutputChunk =
-      if (outputLocation.isFile && outputLocation.getName.endsWith(".jar")) {
-        Jar(outputLocation, sources)
+    def apply(output: SingleOutput, sources: Seq[File]): OutputChunk =
+      if (output.outputLocation.isFile && output.outputLocation.getName.endsWith(".jar")) {
+        Jar(output, sources)
       } else {
-        Directory(outputLocation, sources)
+        Directory(output, sources)
       }
 
-    case class Directory(outputLocation: File, sources: Seq[File]) extends OutputChunk {
-      def getCurrentClasses(): Seq[ClassRef] =
-        (PathFinder(outputLocation) ** "*.class").get.map(new ClassRefLoose(_))
+    private def listClasses(directory: File): Seq[File] = (PathFinder(directory) ** "*.class").get
+
+    case class Directory(output: SingleOutput, sources: Seq[File]) extends OutputChunk {
+      def getCurrentClasses(): Seq[File] = listClasses(outputFile)
+      def capture(f: SingleOutput => Unit) = {
+        val preClasses = getCurrentClasses()
+        f(output)
+        (preClasses.toSet -- getCurrentClasses()).toSeq.map(new ClassRefLoose(_))
+      }
     }
-    case class Jar(outputLocation: File, sources: Seq[File]) extends OutputChunk {
-      def getCurrentClasses(): Seq[ClassRef] =
-        Using.jarFile(false)(outputLocation) { jf =>
-          jf.entries.asScala.map { je =>
-            new ClassRefJarred(outputLocation, je.getName)
-          }.toSeq
+    case class Jar(output: SingleOutput, sources: Seq[File]) extends OutputChunk {
+      def getCurrentClasses(): Seq[String] =
+        Using.jarFile(false)(outputFile) { jf =>
+          jf.entries.asScala.map(_.getName).toSeq
+        }
+      def capture(f: SingleOutput => Unit): Seq[ClassRef] =
+        IO.withTemporaryDirectory(output.outputLocation.getParentFile) { tempDir =>
+          // capture current files in the jar
+          val preClasses = getCurrentClasses()
+
+          // then execute the operation and capture new files
+          f(new SingleOutput { def outputLocation = tempDir })
+          lazy val now = System.currentTimeMillis
+          val newClasses = listClasses(tempDir)
+          val newEntries =
+            newClasses.map { newClass =>
+              IO.zipEntry(tempDir, newClass, now).getOrElse {
+                throw new IOException(s"Output class $newClass not located under expected directory $tempDir.")
+              }
+            }
+          val newEntryNames = newEntries.map(_.getName).toSet
+
+          // create a temporary jar and add all relevant classes to it
+          val tempJar = new File(outputFile.getParent, outputFile.getName + ".tmp")
+          Using.fileOutputStream(append = false)(tempJar) { tfStream =>
+            Using.jarOutputStream(tfStream) { tjfStream =>
+              // add new classes to the jar
+              (newEntries, newClasses).zipped.foreach { (newEntry, newClass) =>
+                tjfStream.putNextEntry(newEntry)
+                IO.transfer(newClass, tjfStream)
+                tjfStream.closeEntry()
+              }
+              // then copy surviving classes from the previous jar into the new jar
+              Using.fileInputStream(outputFile) { ifStream =>
+                Using.jarInputStream(ifStream) { jifStream =>
+                  IO.transfer(jifStream, tjfStream, je => !newEntryNames.contains(je.getName))
+                }
+              }
+            }
+          }
+          // move the temporary jar to its final location
+          IO.move(tempJar, outputFile)
+
+          // and return ClassRefs for newly added classes
+          (newEntryNames -- preClasses).toSeq.map(new ClassRefJarred(outputFile, _))
         }
     }
   }
@@ -78,40 +127,32 @@ final class AnalyzingJavaCompiler private[sbt] (
 
       // TODO - Perhaps we just record task 0 here
 
-      // Here we outline "chunks" of compiles we need to run so that the .class files end up in the right
-      // location for Java. This also captures the known classfiles in the output directory to determine
-      // which classfiles were added by the compile.
-      val chunks =
+      // Capture the known classfiles in the output directory to determine which classfiles were added by the compile.
+      val chunk =
         output match {
           case single: SingleOutput =>
-            Seq(OutputChunk(single.outputLocation, sources))
+            OutputChunk(single, sources)
           case multi: MultipleOutput =>
-            sources.groupBy { src =>
-              multi.outputGroups find { out => ancestor(out.sourceDirectory, src) } map (_.outputDirectory)
-            }.flatMap {
-              case (None, srcs) =>
-                // Report warnings about source files that have no output directory.
-                // TODO: silently dropping analysis is odd...
-                log.error("No output directory mapped for: " + srcs.map(_.getAbsolutePath).mkString(","))
-                None
-              case (Some(outputLocation), srcs) =>
-                Some(OutputChunk(outputLocation, srcs))
-            }
+            throw new RuntimeException(s"Javac doesn't support multiple output directories: $multi")
         }
       // Construct a class-loader we'll use to find dependencies
       val loader = ClasspathUtilities.toLoader(searchClasspath)
 
       // Execute the compilation
       // TODO - Perhaps we just record task 1 here
-      try javac.compileWithReporter(sources.toArray, absClasspath.toArray, output, options.toArray, reporter, log)
-      catch {
-        // Handle older APIs
-        case _: NoSuchMethodError =>
-          javac.compile(sources.toArray, absClasspath.toArray, output, options.toArray, log)
-      }
+      val newClasses =
+        chunk.capture { tmpOutput =>
+          try javac.compileWithReporter(sources.toArray, absClasspath.toArray, tmpOutput, options.toArray, reporter, log)
+          catch {
+            // Handle older APIs
+            case _: NoSuchMethodError =>
+              javac.compile(sources.toArray, absClasspath.toArray, tmpOutput, options.toArray, log)
+          }
+        }
       // TODO - Perhaps we just record task 2 here
 
       // Runs the analysis portion of Javac.
+      // TODO - Perhaps we just record task 3 here
       timed("Java analysis", log) {
         // Reads the API information directly from the Class[_] object
         def readAPI(source: File, classes: Seq[Class[_]]): Set[String] = {
@@ -121,11 +162,9 @@ final class AnalyzingJavaCompiler private[sbt] (
         }
 
         // Analyze each chunk by comparing old and new classes
-        chunks.foreach { outputChunk =>
-          Analyze(outputChunk.getCurrentClasses().toSeq, outputChunk.sources, log)(callback, loader, readAPI)
-        }
+        Analyze(newClasses, chunk.sources, log)(callback, loader, readAPI)
       }
-      // TODO - Perhaps we just record task 3 here
+      // TODO - Perhaps we just record task 4 here
     }
   }
 
