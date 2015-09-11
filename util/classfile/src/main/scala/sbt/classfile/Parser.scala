@@ -21,7 +21,9 @@ private[sbt] object Parser {
     Using.fileInputStream(file)(parse(file.getAbsolutePath)).right.get
 
   def apply(jarFile: File, entry: String): ClassFile =
-    Using.zipEntry(jarFile)(entry)(parse(entry)).right.get
+    Using.zipFile(jarFile) { zf =>
+      Using.zipEntry(zf)(zf.getEntry(entry))(parse(entry))
+    }.right.get
 
   def apply(cr: ClassRef): ClassFile = cr match {
     case crl: ClassRefLoose =>

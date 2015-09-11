@@ -35,7 +35,6 @@ private[sbt] object Analyze {
       source <- guessSourcePath(sourceMap, classFile, log)
     ) {
       analysis.generatedClass(source, newClass, classFile.className)
-      assert(false, "Analysis generation is disabled for Java!")
       productToSource(newClass) = source
       sourceToClassFiles.getOrElseUpdate(source, new ArrayBuffer[ClassFile]) += classFile
     }
