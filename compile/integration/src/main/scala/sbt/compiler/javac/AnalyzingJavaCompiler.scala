@@ -43,7 +43,7 @@ final class AnalyzingJavaCompiler private[sbt] (
   private object OutputChunk {
     /** Capture the current outputs in the given location. */
     def apply(output: SingleOutput, sources: Seq[File]): OutputChunk =
-      if (output.outputLocation.isFile && output.outputLocation.getName.endsWith(".jar")) {
+      if (output.outputLocation.getName.endsWith(".jar")) {
         Jar(output, sources)
       } else {
         Directory(output, sources)

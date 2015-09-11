@@ -10,7 +10,7 @@ import sbt.inc.Locate.DefinesClass
 import sbt._
 import sbt.inc._
 import sbt.inc.Locate
-import xsbti.{ AnalysisCallback, Reporter, ClassRef }
+import xsbti.{ AnalysisCallback, Reporter, ClassRef, DirectoryOutputLocation, OutputLocation }
 import xsbti.api.Source
 import xsbti.compile.CompileOrder._
 import xsbti.compile._
@@ -36,11 +36,11 @@ final class MixedAnalyzingCompiler(
    * @param callback  The callback where we report dependency issues.
    */
   def compile(include: Set[File], changes: DependencyChanges, callback: AnalysisCallback): Unit = {
-    val outputDirs = outputDirectories(output)
-    outputDirs foreach (IO.createDirectory)
+    val outputLocs = outputLocations(output)
+    outputLocs.foreach(_.prepare())
     val incSrc = sources.filter(include)
     val (javaSrcs, scalaSrcs) = incSrc partition javaOnly
-    logInputs(log, javaSrcs.size, scalaSrcs.size, outputDirs)
+    logInputs(log, javaSrcs.size, scalaSrcs.size, outputLocs)
     /** compiles the scala code necessary using the analyzing compiler. */
     def compileScala(): Unit =
       if (scalaSrcs.nonEmpty) {
@@ -64,9 +64,14 @@ final class MixedAnalyzingCompiler(
     if (order == JavaThenScala) { compileJava(); compileScala() } else { compileScala(); compileJava() }
   }
 
-  private[this] def outputDirectories(output: Output): Seq[File] = output match {
-    case single: SingleOutput => List(single.outputLocation)
-    case mult: MultipleOutput => mult.outputGroups map (_.outputDirectory)
+  private[this] def outputLocations(output: Output): Seq[OutputLocation] = output match {
+    case single: SingleOutput =>
+      List(OutputLocation.create(single.outputLocation))
+    case mult: MultipleOutput =>
+      mult.outputGroups.map { og =>
+        // MultipleOutput only supports directory outputs.
+        new DirectoryOutputLocation(og.outputDirectory)
+      }
   }
   /** Debugging method to time how long it takes to run various compilation tasks. */
   private[this] def timed[T](label: String, log: Logger)(t: => T): T = {
@@ -77,12 +82,14 @@ final class MixedAnalyzingCompiler(
     result
   }
 
-  private[this] def logInputs(log: Logger, javaCount: Int, scalaCount: Int, outputDirs: Seq[File]): Unit = {
+  private[this] def logInputs(log: Logger, javaCount: Int, scalaCount: Int, outputLocs: Seq[OutputLocation]): Unit = {
     val scalaMsg = Analysis.counted("Scala source", "", "s", scalaCount)
     val javaMsg = Analysis.counted("Java source", "", "s", javaCount)
     val combined = scalaMsg ++ javaMsg
-    if (combined.nonEmpty)
-      log.info(combined.mkString("Compiling ", " and ", " to " + outputDirs.map(_.getAbsolutePath).mkString(",") + "..."))
+    if (combined.nonEmpty) {
+      val locsString = outputLocs.map(_.file.getAbsolutePath).mkString(",")
+      log.info(combined.mkString("Compiling ", " and ", " to " + locsString + "..."))
+    }
   }
 
   /** Returns true if the file is java. */

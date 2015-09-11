@@ -103,10 +103,6 @@ class AggressiveCompile(cacheFile: File) {
 
             val chunks: Map[Option[File], Seq[File]] = output match {
               case single: SingleOutput =>
-                require(
-                  !single.outputLocation.getName.endsWith(".jar"),
-                  "Jar outputs not supported for AggressiveCompile: use AnalyzingJavaCompiler"
-                )
                 Map(Some(single.outputLocation) -> javaSrcs)
               case multi: MultipleOutput =>
                 javaSrcs groupBy { src =>
@@ -166,6 +162,10 @@ class AggressiveCompile(cacheFile: File) {
     }
   private[this] def outputLocations(output: Output): Seq[OutputLocation] = output match {
     case single: SingleOutput =>
+      require(
+        !single.outputLocation.getName.endsWith(".jar"),
+        "Jar outputs not supported for AggressiveCompile: use MixedAnalyzingCompiler"
+      )
       List(OutputLocation.create(single.outputLocation))
     case mult: MultipleOutput =>
       mult.outputGroups.map { og =>
