@@ -58,7 +58,7 @@ final class AnalyzingJavaCompiler private[sbt] (
       // Execute the compilation
       // TODO - Perhaps we just record task 1 here
       val newClasses =
-        chunk.capture { tmpOutput =>
+        chunk.capture(log) { tmpOutput =>
           try javac.compileWithReporter(sources.toArray, absClasspath.toArray, tmpOutput, options.toArray, reporter, log)
           catch {
             // Handle older APIs

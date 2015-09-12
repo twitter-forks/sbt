@@ -7,7 +7,7 @@ import org.junit.runner.RunWith
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 
-import sbt.{ Using, IO }
+import sbt.{ IO, Logger, Using }
 import xsbti.compile.SingleOutput
 import xsbti.{ ClassRef, ClassRefLoose, ClassRefJarred }
 
@@ -19,16 +19,17 @@ class OutputChunkSpecification extends Specification {
       IO.withTemporaryDirectory { dir =>
         val outputFile = new File(dir, "blah.jar")
         val c = OutputChunk(new SingleOutput { def outputLocation = outputFile }, Seq())
+        val l = Logger.Null
 
         // create a class and confirm that the newly added class is captured
         val fileNameA = "a.class"
-        c.capture { tempOutput =>
+        c.capture(l) { tempOutput =>
           IO.touch(new File(tempOutput.outputLocation, fileNameA))
         }.toSet === Set(new ClassRefJarred(outputFile, fileNameA))
 
         // create another class
         val fileNameB = "b.class"
-        c.capture { tempOutput =>
+        c.capture(l) { tempOutput =>
           IO.touch(new File(tempOutput.outputLocation, fileNameB))
         }.toSet === Set(new ClassRefJarred(outputFile, fileNameB))
 
