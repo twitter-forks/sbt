@@ -1,11 +1,13 @@
 package sbt
 
+import java.io.File
+
 import java.lang.reflect.{ Array => _, _ }
 import java.lang.annotation.Annotation
 import annotation.tailrec
 import sbt.classfile.ClassFile
 import xsbti.api
-import xsbti.SafeLazy
+import xsbti.{ ClassRefLoose, ClassRefJarred, SafeLazy }
 import SafeLazy.strict
 import collection.mutable
 
@@ -90,8 +92,15 @@ object ClassToAPI {
 
   /** TODO: over time, ClassToAPI should switch the majority of access to the classfile parser */
   private[this] def classFileForClass(c: Class[_]): ClassFile = {
-    val file = new java.io.File(IO.classLocationFile(c), s"${c.getName.replace('.', '/')}.class")
-    classfile.Parser.apply(file)
+    val name = s"${c.getName.replace('.', '/')}.class"
+    val classRef =
+      IO.classLocationFile(c) match {
+        case jar if jar.getName.endsWith(".jar") =>
+          new ClassRefJarred(jar, name)
+        case dir =>
+          new ClassRefLoose(new File(dir, name))
+      }
+    classfile.Parser.apply(classRef)
   }
 
   private[this] def lzyS[T <: AnyRef](t: T): xsbti.api.Lazy[T] = lzy(t)
