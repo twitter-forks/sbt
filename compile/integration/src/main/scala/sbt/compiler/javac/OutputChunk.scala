@@ -2,9 +2,8 @@ package sbt.compiler.javac
 
 import java.io.{ File, IOException }
 import collection.JavaConverters._
-import util.Try
 
-import sbt.{ IO, Logger, PathFinder, Using }
+import sbt.{ IO, PathFinder, Using }
 import xsbti.compile.SingleOutput
 import xsbti.{ ClassRef, ClassRefLoose, ClassRefJarred }
 
@@ -19,7 +18,7 @@ sealed trait OutputChunk {
    * Executes the given function in the context of a compilation, and returns the classfiles
    * that were created.
    */
-  def capture(log: Logger)(f: SingleOutput => Unit): Seq[ClassRef]
+  def capture(f: SingleOutput => Unit): Seq[ClassRef]
 }
 
 object OutputChunk {
@@ -33,25 +32,9 @@ object OutputChunk {
 
   private def listClasses(directory: File): Seq[File] = (PathFinder(directory) ** "*.class").get
 
-  /** When mutating potential classpath entries, it's important to purge the compiler's zip cache. */
-  private def clearZipIndex(f: File, log: Logger): Unit = {
-    def clear(cacheClass: String) =
-      Try(Class.forName(cacheClass))
-        .map(_.getMethod("removeFromCache", classOf[File]))
-        .map(_.invoke(null, f))
-        .toOption
-    // jdk7
-    clear("com.sun.tools.javac.file.ZipFileIndexCache")
-      // jdk6
-      .orElse(clear("com.sun.tools.javac.file.ZipFileIndex"))
-      .getOrElse {
-        log.warn("Unable to clear zip cache: unexpected JDK.")
-      }
-  }
-
   case class Directory private[OutputChunk] (output: SingleOutput, sources: Seq[File]) extends OutputChunk {
     def getCurrentClasses(): Seq[File] = listClasses(outputFile)
-    def capture(log: Logger)(f: SingleOutput => Unit) = {
+    def capture(f: SingleOutput => Unit) = {
       val preClasses = getCurrentClasses()
       f(output)
       (preClasses.toSet -- getCurrentClasses()).toSeq.map(new ClassRefLoose(_))
@@ -66,10 +49,9 @@ object OutputChunk {
       } else {
         Set()
       }
-    def capture(log: Logger)(f: SingleOutput => Unit) =
+    def capture(f: SingleOutput => Unit) =
       IO.withTemporaryDirectory(output.outputLocation.getParentFile) { tempDir =>
         // capture current files in the jar
-        clearZipIndex(outputFile, log)
         val preClasses = getCurrentClasses()
 
         // then execute the operation and capture new files
@@ -86,7 +68,6 @@ object OutputChunk {
 
         // create a temporary jar and add all relevant classes to it
         val tempJar = new File(outputFile.getParent, outputFile.getName + ".tmp")
-        clearZipIndex(tempJar, log)
         Using.fileOutputStream(append = false)(tempJar) { tfStream =>
           Using.jarOutputStream(tfStream) { tjfStream =>
             // add new classes to the jar
@@ -107,7 +88,6 @@ object OutputChunk {
         }
         // move the temporary jar to its final location
         IO.move(tempJar, outputFile)
-        clearZipIndex(outputFile, log)
 
         // and return ClassRefs for newly added classes
         (newEntryNames -- preClasses).toSeq.map(new ClassRefJarred(outputFile, _))

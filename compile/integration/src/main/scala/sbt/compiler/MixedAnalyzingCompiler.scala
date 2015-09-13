@@ -2,6 +2,7 @@ package sbt.compiler
 
 import java.io.File
 import java.lang.ref.{ SoftReference, Reference }
+import util.Try
 
 import sbt.classfile.Analyze
 import sbt.classpath.ClasspathUtilities
@@ -10,7 +11,7 @@ import sbt.inc.Locate.DefinesClass
 import sbt._
 import sbt.inc._
 import sbt.inc.Locate
-import xsbti.{ AnalysisCallback, Reporter, ClassRef, DirectoryOutputLocation, OutputLocation }
+import xsbti.{ AnalysisCallback, ClassRef, DirectoryOutputLocation, JarOutputLocation, OutputLocation, Reporter }
 import xsbti.api.Source
 import xsbti.compile.CompileOrder._
 import xsbti.compile._
@@ -48,6 +49,7 @@ final class MixedAnalyzingCompiler(
         val arguments = cArgs(Nil, absClasspath, None, options.options)
         timed("Scala compilation", log) {
           compiler.compile(sources, changes, arguments, output, callback, reporter, config.cache, log, progress)
+          clearZipIndex(outputLocs)
         }
       }
     /**
@@ -58,6 +60,7 @@ final class MixedAnalyzingCompiler(
         // Runs the analysis portion of Javac.
         timed("Java compile + analysis", log) {
           javac.compile(javaSrcs, options.javacOptions.toArray[String], output, callback, reporter, log, progress)
+          clearZipIndex(outputLocs)
         }
       }
     // TODO - Maybe on "Mixed" we should try to compile both Scala + Java.
@@ -73,6 +76,32 @@ final class MixedAnalyzingCompiler(
         new DirectoryOutputLocation(og.outputDirectory)
       }
   }
+
+  /**
+   * When mutating potential classpath entries, it's important to purge the compiler's zip cache in
+   * order to avoid having classloading use stale cached indexes (which result in "corrupted zip
+   * file" errors).
+   */
+  private[this] def clearZipIndex(outputLocs: Seq[OutputLocation]): Unit = outputLocs.foreach {
+    case jl: JarOutputLocation =>
+      def clearJDK7() =
+        Try(Class.forName("com.sun.tools.javac.file.ZipFileIndexCache"))
+          .map { cls =>
+            val instance = cls.getMethod("getSharedInstance").invoke(null)
+            cls.getMethod("removeFromCache", classOf[File]).invoke(instance, jl.file)
+          }
+      def clearJDK6() =
+        Try(Class.forName("com.sun.tools.javac.file.ZipFileIndex"))
+          .map(_.getMethod("removeFromCache", classOf[File]).invoke(null, jl.file))
+          .recover {
+            case e => log.warn(s"Unable to clear zip cache: $e")
+          }
+      (clearJDK7() orElse clearJDK6()).getOrElse {
+        log.warn("Unable to clear zip cache: unexpected JDK.")
+      }
+    case _ => ()
+  }
+
   /** Debugging method to time how long it takes to run various compilation tasks. */
   private[this] def timed[T](label: String, log: Logger)(t: => T): T = {
     val start = System.nanoTime

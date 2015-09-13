@@ -23,13 +23,13 @@ class OutputChunkSpecification extends Specification {
 
         // create a class and confirm that the newly added class is captured
         val fileNameA = "a.class"
-        c.capture(l) { tempOutput =>
+        c.capture { tempOutput =>
           IO.touch(new File(tempOutput.outputLocation, fileNameA))
         }.toSet === Set(new ClassRefJarred(outputFile, fileNameA))
 
         // create another class
         val fileNameB = "b.class"
-        c.capture(l) { tempOutput =>
+        c.capture { tempOutput =>
           IO.touch(new File(tempOutput.outputLocation, fileNameB))
         }.toSet === Set(new ClassRefJarred(outputFile, fileNameB))
 
