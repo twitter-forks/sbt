@@ -342,7 +342,7 @@ lazy val compilerProj = (project in compilePath).
 lazy val compilerIntegrationProj = (project in (compilePath / "integration")).
   dependsOn(compileIncrementalProj, compilerProj, compilePersistProj, apiProj, classfileProj).
   settings(
-    baseSettings,
+    testedBaseSettings,
     name := "Compiler Integration"
   )
 

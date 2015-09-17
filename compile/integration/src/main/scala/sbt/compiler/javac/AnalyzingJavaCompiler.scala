@@ -79,7 +79,7 @@ final class AnalyzingJavaCompiler private[sbt] (
         }
 
         // Analyze each chunk by comparing old and new classes
-        Analyze(newClasses, chunk.sources, log)(callback, loader, readAPI)
+        Analyze(newClasses.toSeq, chunk.sources, log)(callback, loader, readAPI)
       }
       // TODO - Perhaps we just record task 4 here
     }

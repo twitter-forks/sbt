@@ -10,7 +10,7 @@ import xsbti.{ ClassRef, ClassRefLoose, ClassRefJarred }
 sealed trait OutputChunk {
   /** The source files owned by the chunk */
   def sources: Seq[File]
-  /** The final Output location of this chunk. */
+  /** The Output location of this chunk. */
   def output: SingleOutput
   /** The File for the output location of this chunk. */
   def outputFile: File = output.outputLocation
@@ -18,7 +18,11 @@ sealed trait OutputChunk {
    * Executes the given function in the context of a compilation, and returns the classfiles
    * that were created.
    */
-  def capture(f: SingleOutput => Unit): Seq[ClassRef]
+  def capture(f: SingleOutput => Unit): Set[ClassRef]
+  /**
+   * The current refs at this output location.
+   */
+  def getCurrentRefs(): Seq[ClassRef]
 }
 
 object OutputChunk {
@@ -30,34 +34,37 @@ object OutputChunk {
       Directory(output, sources)
     }
 
-  private def listClasses(directory: File): Seq[File] = (PathFinder(directory) ** "*.class").get
+  private def list(directory: File): Seq[File] = (PathFinder(directory) ***).filter(_.isFile).get
 
   case class Directory private[OutputChunk] (output: SingleOutput, sources: Seq[File]) extends OutputChunk {
-    def getCurrentClasses(): Seq[File] = listClasses(outputFile)
+    def getCurrentRefs(): Seq[ClassRef] = list(outputFile).map(new ClassRefLoose(_))
+
     def capture(f: SingleOutput => Unit) = {
-      val preClasses = getCurrentClasses()
+      val pre = getCurrentRefs()
       f(output)
-      (preClasses.toSet -- getCurrentClasses()).toSeq.map(new ClassRefLoose(_))
+      getCurrentRefs().toSet -- pre
     }
   }
   case class Jar private[OutputChunk] (output: SingleOutput, sources: Seq[File]) extends OutputChunk {
-    def getCurrentClasses(): Set[String] =
+    def getCurrentRefs(): Seq[ClassRef] =
       if (outputFile.exists) {
         Using.jarFile(false)(outputFile) { jf =>
-          jf.entries.asScala.map(_.getName).toSet
-        }
+          // force the collection while the jar is open
+          jf.entries.asScala.map(_.getName).toVector
+        }.map(new ClassRefJarred(outputFile, _))
       } else {
-        Set()
+        Seq()
       }
+
     def capture(f: SingleOutput => Unit) =
       IO.withTemporaryDirectory(output.outputLocation.getParentFile) { tempDir =>
         // capture current files in the jar
-        val preClasses = getCurrentClasses()
+        val pre = getCurrentRefs()
 
         // then execute the operation and capture new files
         f(new SingleOutput { def outputLocation = tempDir })
         lazy val now = System.currentTimeMillis
-        val newClasses = listClasses(tempDir)
+        val newClasses = list(tempDir)
         val newEntries =
           newClasses.map { newClass =>
             IO.zipEntry(tempDir, newClass, now).getOrElse {
@@ -90,7 +97,7 @@ object OutputChunk {
         IO.move(tempJar, outputFile)
 
         // and return ClassRefs for newly added classes
-        (newEntryNames -- preClasses).toSeq.map(new ClassRefJarred(outputFile, _))
+        (newEntryNames.map(new ClassRefJarred(outputFile, _)): Set[ClassRef]) -- pre
       }
   }
 }
