@@ -5,7 +5,7 @@ package sbt
 package inc
 
 import xsbti.api.{ Source, Compilation }
-import xsbti.{ ClassRef, Position, Problem, Severity }
+import xsbti.{ FileRef, Position, Problem, Severity }
 import xsbti.compile.{ CompileOrder, Output => APIOutput, SingleOutput, MultipleOutput }
 import xsbti.DependencyContext._
 import MultipleOutput.OutputGroup
@@ -19,7 +19,7 @@ import Relations.{ Source => RSource, SourceDependencies }
 @deprecated("Replaced by TextAnalysisFormat. OK to remove in 0.14.", since = "0.13.1")
 object AnalysisFormats {
   type RFF = Relation[File, File]
-  type RFR = Relation[File, ClassRef]
+  type RFR = Relation[File, FileRef]
   type RFS = Relation[File, String]
 
   import System.{ currentTimeMillis => now }
@@ -93,7 +93,7 @@ object AnalysisFormats {
     )(fileFormat)
   implicit val outputFormat: Format[APIOutput] = asUnion(singleOutputFormat, multipleOutputFormat)
 
-  implicit def stampsFormat(implicit prodF: Format[Map[ClassRef, Stamp]], srcF: Format[Map[File, Stamp]], binF: Format[Map[ClassRef, Stamp]], nameF: Format[Map[ClassRef, String]]): Format[Stamps] =
+  implicit def stampsFormat(implicit prodF: Format[Map[FileRef, Stamp]], srcF: Format[Map[File, Stamp]], binF: Format[Map[FileRef, Stamp]], nameF: Format[Map[FileRef, String]]): Format[Stamps] =
     asProduct4(Stamps.apply _)(s => (s.products, s.sources, s.binaries, s.classNames))(prodF, srcF, binF, nameF)
 
   implicit def stampFormat(implicit hashF: Format[Hash], modF: Format[LastModified], existsF: Format[Exists]): Format[Stamp] =

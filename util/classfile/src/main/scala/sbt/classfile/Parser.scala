@@ -5,7 +5,7 @@ package sbt
 package classfile
 
 import java.io.{ DataInputStream, File, InputStream }
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose }
 import scala.annotation.switch
 import java.util.zip.{ ZipEntry }
 
@@ -25,10 +25,10 @@ private[sbt] object Parser {
       Using.zipEntry(zf)(zf.getEntry(entry))(parse(entry))
     }.right.get
 
-  def apply(cr: ClassRef): ClassFile = cr match {
-    case crl: ClassRefLoose =>
+  def apply(cr: FileRef): ClassFile = cr match {
+    case crl: FileRefLoose =>
       apply(crl.classFile)
-    case crj: ClassRefJarred =>
+    case crj: FileRefJarred =>
       apply(crj.jarFile, crj.classFile)
   }
 

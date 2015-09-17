@@ -4,30 +4,30 @@
 package sbt
 package inc
 
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose }
 import java.io.{ IOException, File }
 import java.util.jar.JarFile
 
 object Locate {
-  type DefinesClass = File => String => Option[ClassRef]
+  type DefinesClass = File => String => Option[FileRef]
 
   /**
    * Returns a function that searches the provided classpath for
    * a class name and returns the entry that defines that class.
    */
-  def entry(classpath: Seq[File], f: DefinesClass): String => Option[ClassRef] = {
+  def entry(classpath: Seq[File], f: DefinesClass): String => Option[FileRef] = {
     val entries =
       classpath.map { file =>
         (file, f(file))
       }.toStream
-    def fn(className: String): Option[ClassRef] =
+    def fn(className: String): Option[FileRef] =
       entries.flatMap {
         case (file, defines) => defines(className)
       }.headOption
     fn
   }
 
-  def definesClass(entry: File): String => Option[ClassRef] =
+  def definesClass(entry: File): String => Option[FileRef] =
     if (entry.isDirectory)
       directoryDefinesClass(entry)
     else if (entry.exists && classpath.ClasspathUtilities.isArchive(entry, contentFallback = true))
@@ -35,13 +35,13 @@ object Locate {
     else
       Function.const(None)
 
-  def jarDefinesClass(jarFile: File): String => Option[ClassRefJarred] =
+  def jarDefinesClass(jarFile: File): String => Option[FileRefJarred] =
     {
       import collection.JavaConverters._
-      val entries: Map[String, ClassRefJarred] =
+      val entries: Map[String, FileRefJarred] =
         try {
           new JarFile(jarFile).entries.asScala.map { e =>
-            toClassName(e.getName, '/') -> new ClassRefJarred(jarFile, e.getName)
+            toClassName(e.getName, '/') -> new FileRefJarred(jarFile, e.getName)
           }.toMap
         } catch {
           case e: IOException =>
@@ -58,10 +58,10 @@ object Locate {
 
   val ClassExt = ".class"
 
-  def directoryDefinesClass(entry: File): String => Option[ClassRefLoose] = { className =>
+  def directoryDefinesClass(entry: File): String => Option[FileRefLoose] = { className =>
     val path = new File(entry, fromClassName(className))
     if (path.isFile)
-      Some(new ClassRefLoose(path))
+      Some(new FileRefLoose(path))
     else
       None
   }

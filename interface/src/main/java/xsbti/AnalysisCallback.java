@@ -28,17 +28,17 @@ public interface AnalysisCallback
 	* class named <code>name</code> from class or jar file <code>binary</code>.
 	* If <code>publicInherited</code> is true, this dependency is a result of inheritance by a
 	* template accessible outside of the source file.
-	* @deprecated Use `binaryDependency(ClassRef binary, String name, File source, DependencyContext context)` instead. */
+	* @deprecated Use `binaryDependency(FileRef binary, String name, File source, DependencyContext context)` instead. */
 	@Deprecated
-	void binaryDependency(ClassRef binary, String name, File source, boolean publicInherited);
+	void binaryDependency(FileRef binary, String name, File source, boolean publicInherited);
 	/** Called to indicate that the source file <code>source</code> depends on the top-level
 	* class named <code>name</code> from class or jar file <code>binary</code>.
 	* <code>context</code> gives information about the context in which this dependency has been extracted.
 	* See xsbti.DependencyContext for the list of existing dependency contexts. */
-	void binaryDependency(ClassRef binary, String name, File source, DependencyContext context);
+	void binaryDependency(FileRef binary, String name, File source, DependencyContext context);
 	/** Called to indicate that the source file <code>source</code> produces a class file at
 	* <code>module</code> contain class <code>name</code>.*/
-	void generatedClass(File source, ClassRef module, String name);
+	void generatedClass(File source, FileRef module, String name);
 	/** Called when the public API of a source file is extracted. */
 	void api(File sourceFile, xsbti.api.SourceAPI source);
 	void usedName(File sourceFile, String names);

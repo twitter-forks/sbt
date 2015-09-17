@@ -5,7 +5,7 @@ package sbt
 package inc
 
 import java.io.{ File, FileNotFoundException, IOException }
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose }
 import java.util.jar.JarFile
 import scala.collection.JavaConverters._
 import Stamp.getStamp
@@ -13,34 +13,34 @@ import scala.util.matching.Regex
 
 trait ReadStamps {
   /** The Stamp for the given product at the time represented by this Stamps instance.*/
-  def product(prod: ClassRef): Stamp
+  def product(prod: FileRef): Stamp
   /** The Stamp for the given source file at the time represented by this Stamps instance.*/
   def internalSource(src: File): Stamp
   /** The Stamp for the given binary dependency at the time represented by this Stamps instance.*/
-  def binary(bin: ClassRef): Stamp
+  def binary(bin: FileRef): Stamp
 }
 
 /** Provides information about files as they were at a specific time.*/
 trait Stamps extends ReadStamps {
   def allInternalSources: collection.Set[File]
-  def allBinaries: collection.Set[ClassRef]
-  def allProducts: collection.Set[ClassRef]
+  def allBinaries: collection.Set[FileRef]
+  def allProducts: collection.Set[FileRef]
 
   def sources: Map[File, Stamp]
-  def binaries: Map[ClassRef, Stamp]
-  def products: Map[ClassRef, Stamp]
-  def classNames: Map[ClassRef, String]
+  def binaries: Map[FileRef, Stamp]
+  def products: Map[FileRef, Stamp]
+  def classNames: Map[FileRef, String]
 
-  def className(bin: ClassRef): Option[String]
+  def className(bin: FileRef): Option[String]
 
   def markInternalSource(src: File, s: Stamp): Stamps
-  def markBinary(bin: ClassRef, className: String, s: Stamp): Stamps
-  def markProduct(prod: ClassRef, s: Stamp): Stamps
+  def markBinary(bin: FileRef, className: String, s: Stamp): Stamps
+  def markProduct(prod: FileRef, s: Stamp): Stamps
 
-  def filter(prod: ClassRef => Boolean, removeSources: Iterable[File], bin: ClassRef => Boolean): Stamps
+  def filter(prod: FileRef => Boolean, removeSources: Iterable[File], bin: FileRef => Boolean): Stamps
 
   def ++(o: Stamps): Stamps
-  def groupBy[K](prod: Map[K, ClassRef => Boolean], sourcesGrouping: File => K, bin: Map[K, ClassRef => Boolean]): Map[K, Stamps]
+  def groupBy[K](prod: Map[K, FileRef => Boolean], sourcesGrouping: File => K, bin: Map[K, FileRef => Boolean]): Map[K, Stamps]
 }
 
 sealed trait Stamp {
@@ -121,16 +121,16 @@ object Stamps {
 
   val empty: Stamps = apply(Map.empty, Map.empty, Map.empty, Map.empty)
 
-  def apply(products: Map[ClassRef, Stamp], sources: Map[File, Stamp], binaries: Map[ClassRef, Stamp], binaryClassNames: Map[ClassRef, String]): Stamps =
+  def apply(products: Map[FileRef, Stamp], sources: Map[File, Stamp], binaries: Map[FileRef, Stamp], binaryClassNames: Map[FileRef, String]): Stamps =
     new MStamps(products, sources, binaries, binaryClassNames)
 
   def merge(stamps: Traversable[Stamps]): Stamps = (Stamps.empty /: stamps)(_ ++ _)
 }
 
-private class MStamps(val products: Map[ClassRef, Stamp], val sources: Map[File, Stamp], val binaries: Map[ClassRef, Stamp], val classNames: Map[ClassRef, String]) extends Stamps {
+private class MStamps(val products: Map[FileRef, Stamp], val sources: Map[File, Stamp], val binaries: Map[FileRef, Stamp], val classNames: Map[FileRef, String]) extends Stamps {
   def allInternalSources: collection.Set[File] = sources.keySet
-  def allBinaries: collection.Set[ClassRef] = binaries.keySet
-  def allProducts: collection.Set[ClassRef] = products.keySet
+  def allBinaries: collection.Set[FileRef] = binaries.keySet
+  def allProducts: collection.Set[FileRef] = products.keySet
 
   def ++(o: Stamps): Stamps =
     new MStamps(products ++ o.products, sources ++ o.sources, binaries ++ o.binaries, classNames ++ o.classNames)
@@ -138,16 +138,16 @@ private class MStamps(val products: Map[ClassRef, Stamp], val sources: Map[File,
   def markInternalSource(src: File, s: Stamp): Stamps =
     new MStamps(products, sources.updated(src, s), binaries, classNames)
 
-  def markBinary(bin: ClassRef, className: String, s: Stamp): Stamps =
+  def markBinary(bin: FileRef, className: String, s: Stamp): Stamps =
     new MStamps(products, sources, binaries.updated(bin, s), classNames.updated(bin, className))
 
-  def markProduct(prod: ClassRef, s: Stamp): Stamps =
+  def markProduct(prod: FileRef, s: Stamp): Stamps =
     new MStamps(products.updated(prod, s), sources, binaries, classNames)
 
-  def filter(prod: ClassRef => Boolean, removeSources: Iterable[File], bin: ClassRef => Boolean): Stamps =
+  def filter(prod: FileRef => Boolean, removeSources: Iterable[File], bin: FileRef => Boolean): Stamps =
     new MStamps(products.filterKeys(prod), sources -- removeSources, binaries.filterKeys(bin), classNames.filterKeys(bin))
 
-  def groupBy[K](prod: Map[K, ClassRef => Boolean], f: File => K, bin: Map[K, ClassRef => Boolean]): Map[K, Stamps] =
+  def groupBy[K](prod: Map[K, FileRef => Boolean], f: File => K, bin: Map[K, FileRef => Boolean]): Map[K, Stamps] =
     {
       val sourcesMap: Map[K, Map[File, Stamp]] = sources.groupBy(x => f(x._1))
 
@@ -162,10 +162,10 @@ private class MStamps(val products: Map[ClassRef, Stamp], val sources: Map[File,
       (for (k <- prod.keySet ++ sourcesMap.keySet ++ bin.keySet) yield (k, kStamps(k))).toMap
     }
 
-  def product(prod: ClassRef) = getStamp(products, prod)
+  def product(prod: FileRef) = getStamp(products, prod)
   def internalSource(src: File) = getStamp(sources, src)
-  def binary(bin: ClassRef) = getStamp(binaries, bin)
-  def className(bin: ClassRef) = classNames get bin
+  def binary(bin: FileRef) = getStamp(binaries, bin)
+  def className(bin: FileRef) = classNames get bin
 
   override def equals(other: Any): Boolean = other match {
     case o: MStamps => products == o.products && sources == o.sources && binaries == o.binaries && classNames == o.classNames
@@ -194,19 +194,19 @@ private class InitialStamps extends ReadStamps {
   // map from jar path to map of internal classfile to Stamp
   private val jars = mutable.Map[File, Map[String, Stamp]]()
 
-  def product(prod: ClassRef): Stamp = lastModified(prod)
+  def product(prod: FileRef): Stamp = lastModified(prod)
   def internalSource(src: File): Stamp = lastModified(src)
-  def binary(bin: ClassRef): Stamp = lastModified(bin)
+  def binary(bin: FileRef): Stamp = lastModified(bin)
 
   private def lastModified(f: File): Stamp = files.synchronized {
     files.getOrElseUpdate(f, Stamp.lastModifiedFile(f))
   }
 
-  private def lastModified(u: ClassRef): Stamp = Stamp.tryStamp {
+  private def lastModified(u: FileRef): Stamp = Stamp.tryStamp {
     u match {
-      case cr: ClassRefLoose =>
+      case cr: FileRefLoose =>
         lastModified(cr.classFile)
-      case cr: ClassRefJarred =>
+      case cr: FileRefJarred =>
         lastModified(cr.jarFile, cr.classFile)
     }
   }

@@ -11,7 +11,7 @@ import sbt.inc.Locate.DefinesClass
 import sbt._
 import sbt.inc._
 import sbt.inc.Locate
-import xsbti.{ AnalysisCallback, ClassRef, DirectoryOutputLocation, JarOutputLocation, OutputLocation, Reporter }
+import xsbti.{ AnalysisCallback, FileRef, DirectoryOutputLocation, JarOutputLocation, OutputLocation, Reporter }
 import xsbti.api.Source
 import xsbti.compile.CompileOrder._
 import xsbti.compile._
@@ -193,7 +193,7 @@ object MixedAnalyzingCompiler {
   }
 
   /** Returns the search classpath (for dependencies) and a function which can also do so. */
-  def searchClasspathAndLookup(config: CompileConfiguration): (Seq[File], String => Option[ClassRef]) = {
+  def searchClasspathAndLookup(config: CompileConfiguration): (Seq[File], String => Option[FileRef]) = {
     import config._
     import currentSetup._
     val absClasspath = classpath.map(_.getAbsoluteFile)
@@ -203,8 +203,8 @@ object MixedAnalyzingCompiler {
     (searchClasspath, Locate.entry(searchClasspath, definesClass))
   }
 
-  /** Returns a "lookup ClassRef for a given class name" function. */
-  def classPathLookup(config: CompileConfiguration): String => Option[ClassRef] =
+  /** Returns a "lookup FileRef for a given class name" function. */
+  def classPathLookup(config: CompileConfiguration): String => Option[FileRef] =
     searchClasspathAndLookup(config)._2
 
   def apply(config: CompileConfiguration)(implicit log: Logger): MixedAnalyzingCompiler = {

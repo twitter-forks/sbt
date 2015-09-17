@@ -15,7 +15,7 @@ import inc.IncOptions
 import CompileSetup._
 import sbinary.DefaultProtocol.{ immutableMapFormat, immutableSetFormat, StringFormat }
 
-import xsbti.{ AnalysisCallback, ClassRefLoose, DirectoryOutputLocation, OutputLocation, Reporter }
+import xsbti.{ AnalysisCallback, FileRefLoose, DirectoryOutputLocation, OutputLocation, Reporter }
 import xsbti.api.Source
 import xsbti.compile.{ CompileOrder, DependencyChanges, GlobalsCache, Output, SingleOutput, MultipleOutput, CompileProgress }
 import CompileOrder.{ JavaThenScala, Mixed, ScalaThenJava }
@@ -137,7 +137,7 @@ class AggressiveCompile(cacheFile: File) {
               for ((classesFinder, oldClasses, srcs) <- memo) {
                 val newClasses = Set(classesFinder.get: _*) -- oldClasses
                 // TODO: support Jar outputs for javac
-                Analyze(newClasses.map(new ClassRefLoose(_)).toSeq, srcs, log)(callback, loader, readAPI)
+                Analyze(newClasses.map(new FileRefLoose(_)).toSeq, srcs, log)(callback, loader, readAPI)
               }
             }
           }

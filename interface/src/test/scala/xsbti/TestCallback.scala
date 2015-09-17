@@ -8,8 +8,8 @@ import xsbti.DependencyContext._
 class TestCallback(override val nameHashing: Boolean = false) extends AnalysisCallback
 {
 	val sourceDependencies = new ArrayBuffer[(File, File, DependencyContext)]
-	val binaryDependencies = new ArrayBuffer[(ClassRef, String, File, DependencyContext)]
-	val products = new ArrayBuffer[(File, ClassRef, String)]
+	val binaryDependencies = new ArrayBuffer[(FileRef, String, File, DependencyContext)]
+	val products = new ArrayBuffer[(File, FileRef, String)]
 	val usedNames = scala.collection.mutable.Map.empty[File, Set[String]].withDefaultValue(Set.empty)
 	val apis: scala.collection.mutable.Map[File, SourceAPI] = scala.collection.mutable.Map.empty
 
@@ -18,12 +18,12 @@ class TestCallback(override val nameHashing: Boolean = false) extends AnalysisCa
 		sourceDependency(dependsOn, source, context)
 	}
 	def sourceDependency(dependsOn: File, source: File, context: DependencyContext): Unit = { sourceDependencies += ((dependsOn, source, context)) }
-	def binaryDependency(binary: ClassRef, name: String, source: File, inherited: Boolean): Unit = {
+	def binaryDependency(binary: FileRef, name: String, source: File, inherited: Boolean): Unit = {
 		val context = if(inherited) DependencyByInheritance else DependencyByMemberRef
 		binaryDependency(binary, name, source, context)
 	}
-	def binaryDependency(binary: ClassRef, name: String, source: File, context: DependencyContext): Unit = { binaryDependencies += ((binary, name, source, context)) }
-	def generatedClass(source: File, module: ClassRef, name: String): Unit = { products += ((source, module, name)) }
+	def binaryDependency(binary: FileRef, name: String, source: File, context: DependencyContext): Unit = { binaryDependencies += ((binary, name, source, context)) }
+	def generatedClass(source: File, module: FileRef, name: String): Unit = { products += ((source, module, name)) }
 
 	def usedName(source: File, name: String): Unit = { usedNames(source) += name }
 	def api(source: File, sourceAPI: SourceAPI): Unit = {

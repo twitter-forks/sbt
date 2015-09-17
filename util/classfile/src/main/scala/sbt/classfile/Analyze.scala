@@ -12,18 +12,18 @@ import java.lang.annotation.Annotation
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier.{ STATIC, PUBLIC, ABSTRACT }
 import java.net.URL
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose, DependencyContext }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose, DependencyContext }
 import xsbti.DependencyContext._
 
 private[sbt] object Analyze {
-  def apply[T](newClasses: Seq[ClassRef], sources: Seq[File], log: Logger)(analysis: xsbti.AnalysisCallback, loader: ClassLoader, readAPI: (File, Seq[Class[_]]) => Set[String]) {
+  def apply[T](newClasses: Seq[FileRef], sources: Seq[File], log: Logger)(analysis: xsbti.AnalysisCallback, loader: ClassLoader, readAPI: (File, Seq[Class[_]]) => Set[String]) {
     val sourceMap = sources.toSet[File].groupBy(_.getName)
 
     def load(tpe: String, errMsg: => Option[String]): Option[Class[_]] =
       try { Some(Class.forName(tpe, false, loader)) }
       catch { case e: Throwable => errMsg.foreach(msg => log.warn(msg + " : " + e.toString)); None }
 
-    val productToSource = new mutable.HashMap[ClassRef, File]
+    val productToSource = new mutable.HashMap[FileRef, File]
     val sourceToClassFiles = new mutable.HashMap[File, Buffer[ClassFile]]
 
     // parse class files and assign classes to sources.  This must be done before dependencies, since the information comes
@@ -49,10 +49,10 @@ private[sbt] object Analyze {
           for (url <- Option(loader.getResource(classFileName)); file <- urlAsFile(url, log)) {
             val classRef =
               if (url.getProtocol == "jar") {
-                new ClassRefJarred(file, classFileName)
+                new FileRefJarred(file, classFileName)
               } else {
                 assume(url.getProtocol == "file")
-                new ClassRefLoose(file)
+                new FileRefLoose(file)
               }
 
             productToSource.get(classRef) match {
@@ -86,7 +86,7 @@ private[sbt] object Analyze {
     try { execute }
     catch { case e: Throwable => log.trace(e); log.error(e.toString) }
   }
-  private def guessSourceName(cr: ClassRef) = {
+  private def guessSourceName(cr: FileRef) = {
     def takeFromSlash(name: String) = {
       val slash = name.indexOf('/')
       if (slash < 0) name else name.substring(slash + 1)
@@ -103,9 +103,9 @@ private[sbt] object Analyze {
       }
     val name =
       cr match {
-        case crl: ClassRefLoose =>
+        case crl: FileRefLoose =>
           crl.classFile.getName
-        case crj: ClassRefJarred =>
+        case crj: FileRefJarred =>
           // jars always use '/' as the file separator
           takeFromSlash(crj.classFile)
       }

@@ -9,7 +9,7 @@ import Gen._
 
 import sbt.Relation
 import xsbti.api._
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose, SafeLazy }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose, SafeLazy }
 import xsbti.DependencyContext._
 
 /**
@@ -58,15 +58,15 @@ object TestCaseGenerators {
     path <- genPath(suffix)
   } yield new File(path)
 
-  def genClassRef: Gen[ClassRef] = for {
+  def genFileRef: Gen[FileRef] = for {
     isJar <- oneOf(true, false)
     outerFile <- genFile(if (isJar) ".jar" else ".class")
     innerFile <- genPath(".class")
   } yield {
     if (isJar)
-      new ClassRefJarred(outerFile, innerFile)
+      new FileRefJarred(outerFile, innerFile)
     else
-      new ClassRefLoose(outerFile)
+      new FileRefLoose(outerFile)
   }
 
   def genStamp: Gen[Stamp] = for {
@@ -144,7 +144,7 @@ object TestCaseGenerators {
     entries <- listOfN(srcs.length, containerOfN[Set, T](n, g))
   } yield Relation.reconstruct(zipMap(srcs, entries))
 
-  val genClassRefRelation = genRelation[ClassRef](unique(genClassRef)) _
+  val genFileRefRelation = genRelation[FileRef](unique(genFileRef)) _
   val genStringRelation = genRelation[String](unique(identifier)) _
 
   def genRSource(srcs: List[File]): Gen[Relations.Source] = for {
@@ -174,8 +174,8 @@ object TestCaseGenerators {
   def genRelations: Gen[Relations] = for {
     numSrcs <- choose(0, maxSources)
     srcs <- listOfN(numSrcs, genFile())
-    srcProd <- genClassRefRelation(srcs)
-    binaryDep <- genClassRefRelation(srcs)
+    srcProd <- genFileRefRelation(srcs)
+    binaryDep <- genFileRefRelation(srcs)
     direct <- genRSource(srcs)
     publicInherited <- genSubRSource(direct)
     classes <- genStringRelation(srcs)
@@ -185,8 +185,8 @@ object TestCaseGenerators {
   def genRelationsNameHashing: Gen[Relations] = for {
     numSrcs <- choose(0, maxSources)
     srcs <- listOfN(numSrcs, genFile())
-    srcProd <- genClassRefRelation(srcs)
-    binaryDep <- genClassRefRelation(srcs)
+    srcProd <- genFileRefRelation(srcs)
+    binaryDep <- genFileRefRelation(srcs)
     memberRef <- genRSourceDependencies(srcs)
     inheritance <- genSubRSourceDependencies(memberRef)
     classes <- genStringRelation(srcs)

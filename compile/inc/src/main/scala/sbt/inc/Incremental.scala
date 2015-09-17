@@ -7,7 +7,7 @@ package inc
 import xsbt.api.{ NameChanges, SameAPI, TopLevel }
 import annotation.tailrec
 import xsbti.api.{ Compilation, Source }
-import xsbti.ClassRef
+import xsbti.FileRef
 import xsbti.compile.DependencyChanges
 import java.io.File
 
@@ -36,7 +36,7 @@ object Incremental {
    *         A flag of whether or not compilation completed succesfully, and the resulting dependency analysis object.
    */
   def compile(sources: Set[File],
-    entry: String => Option[ClassRef],
+    entry: String => Option[FileRef],
     previous: Analysis,
     current: ReadStamps,
     forEntry: File => Option[Analysis],

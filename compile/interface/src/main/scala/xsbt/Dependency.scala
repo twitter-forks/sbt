@@ -5,7 +5,7 @@ package xsbt
 
 import scala.tools.nsc.{ io, symtab, Phase }
 import symtab.Flags
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose }
 import xsbti.DependencyContext
 import xsbti.DependencyContext._
 
@@ -59,7 +59,7 @@ final class Dependency(val global: CallbackGlobal) extends LocateClassFile {
          * run) or from class file and calls respective callback method.
          */
         def processDependency(on: Symbol, context: DependencyContext): Unit = {
-          def binaryDependency(ref: ClassRef, className: String) =
+          def binaryDependency(ref: FileRef, className: String) =
             callback.binaryDependency(ref, className, sourceFile, context)
           val onSource = on.sourceFile
           if (onSource == null) {

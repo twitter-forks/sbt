@@ -2,7 +2,7 @@ package sbt
 package inc
 
 import scala.annotation.tailrec
-import xsbti.ClassRef
+import xsbti.FileRef
 import xsbti.compile.DependencyChanges
 import xsbti.api.{ Compilation, Source }
 import java.io.File
@@ -43,7 +43,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       cycle(incInv, allSources, emptyChanges, merged, doCompile, classfileManager, cycleNum + 1)
     }
   private[this] def emptyChanges: DependencyChanges = new DependencyChanges {
-    val modifiedBinaries = new Array[ClassRef](0)
+    val modifiedBinaries = new Array[FileRef](0)
     val modifiedClasses = new Array[String](0)
     def isEmpty = true
   }
@@ -126,7 +126,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
     case (co1, co2) => co1.sourceDirectory == co2.sourceDirectory && co1.outputLocation == co2.outputLocation
   }
 
-  def changedInitial(entry: String => Option[ClassRef], sources: Set[File], previousAnalysis: Analysis, current: ReadStamps,
+  def changedInitial(entry: String => Option[FileRef], sources: Set[File], previousAnalysis: Analysis, current: ReadStamps,
     forEntry: File => Option[Analysis])(implicit equivS: Equiv[Stamp]): InitialChanges =
     {
       val previous = previousAnalysis.stamps
@@ -269,21 +269,21 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
       newInv ++ initialDependsOnNew
     }
 
-  def externalBinaryModified(entry: String => Option[ClassRef], analysis: File => Option[Analysis], previous: Stamps, current: ReadStamps)(implicit equivS: Equiv[Stamp]): ClassRef => Boolean =
+  def externalBinaryModified(entry: String => Option[FileRef], analysis: File => Option[Analysis], previous: Stamps, current: ReadStamps)(implicit equivS: Equiv[Stamp]): FileRef => Boolean =
     dependsOn =>
       {
         def inv(reason: String): Boolean = {
           log.debug("Invalidating " + dependsOn + ": " + reason)
           true
         }
-        def entryModified(className: String, classpathEntry: ClassRef): Boolean =
+        def entryModified(className: String, classpathEntry: FileRef): Boolean =
           {
             if (classpathEntry != dependsOn)
               inv("class " + className + " now provided by " + classpathEntry)
             else
               urlModified(dependsOn, classpathEntry)
           }
-        def urlModified(previousFile: ClassRef, currentFile: ClassRef): Boolean =
+        def urlModified(previousFile: FileRef, currentFile: FileRef): Boolean =
           {
             val previousStamp = previous.binary(previousFile)
             val currentStamp = current.binary(currentFile)
@@ -292,7 +292,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
             else
               inv("stamp changed from " + previousStamp + " to " + currentStamp)
           }
-        def dependencyModified(file: ClassRef): Boolean =
+        def dependencyModified(file: FileRef): Boolean =
           previous.className(file) match {
             case None => inv("no class name was mapped for it.")
             case Some(name) => entry(name) match {
@@ -305,7 +305,7 @@ private[inc] abstract class IncrementalCommon(log: Logger, options: IncOptions) 
           (if (skipClasspathLookup) urlModified(dependsOn, dependsOn) else dependencyModified(dependsOn))
       }
 
-  def currentExternalAPI(entry: String => Option[ClassRef], forEntry: File => Option[Analysis]): String => Source =
+  def currentExternalAPI(entry: String => Option[FileRef], forEntry: File => Option[Analysis]): String => Source =
     className =>
       orEmpty(
         for {

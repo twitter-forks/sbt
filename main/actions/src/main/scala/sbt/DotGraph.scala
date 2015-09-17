@@ -7,12 +7,12 @@ import java.io.{ File, Writer }
 import java.net.URL
 import inc.Relations
 
-import xsbti.ClassRef
+import xsbti.FileRef
 
 object DotGraph {
   private def fToString(roots: Iterable[File]): (File => String) =
     (x: File) => sourceToString(roots, x)
-  private def c2s(cr: ClassRef): String = cr.toString
+  private def c2s(cr: FileRef): String = cr.toString
   def sources(relations: Relations, outputDirectory: File, sourceRoots: Iterable[File]): Unit = {
     val f2s: File => String = fToString(sourceRoots)
     apply(relations, outputDirectory, f2s, c2s)
@@ -27,7 +27,7 @@ object DotGraph {
     val f2s = packageOnly compose fToString(sourceRoots)
     apply(relations, outputDirectory, f2s, c2s)
   }
-  def apply(relations: Relations, outputDir: File, sourceToString: File => String, externalToString: ClassRef => String): Unit = {
+  def apply(relations: Relations, outputDir: File, sourceToString: File => String, externalToString: FileRef => String): Unit = {
     def file(name: String) = new File(outputDir, name)
     IO.createDirectory(outputDir)
     generateGraph(file("int-source-deps"), "dependencies", relations.internalSrcDep, sourceToString, sourceToString)

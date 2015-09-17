@@ -9,7 +9,7 @@ import sbt.compiler.CompilerArguments
 import sbt.inc.Locate
 import xsbti.api.Source
 import xsbti.compile._
-import xsbti.{ AnalysisCallback, ClassRef, Reporter }
+import xsbti.{ AnalysisCallback, FileRef, Reporter }
 
 /**
  * This is a java compiler which will also report any discovered source dependencies/apis out via
@@ -22,7 +22,7 @@ final class AnalyzingJavaCompiler private[sbt] (
     val javac: xsbti.compile.JavaCompiler,
     val classpath: Seq[File],
     val scalaInstance: xsbti.compile.ScalaInstance,
-    val classLookup: (String => Option[ClassRef]),
+    val classLookup: (String => Option[FileRef]),
     val searchClasspath: Seq[File]) {
 
   /**

@@ -3,7 +3,7 @@ package inc
 
 import java.io.{ BufferedReader, File, StringReader, StringWriter }
 import scala.math.abs
-import xsbti.{ ClassRef, ClassRefLoose, ClassRefJarred }
+import xsbti.{ FileRef, FileRefLoose, FileRefJarred }
 import org.scalacheck._
 import Gen._
 import Prop._
@@ -97,8 +97,8 @@ object TextAnalysisFormatTest extends Properties("TextAnalysisFormat") {
   }
 
   def f(s: String) = new File(s)
-  def u(f: String) = new ClassRefLoose(new File(f))
-  def u(f: String, p: String) = new ClassRefJarred(new File(f), p)
+  def u(f: String) = new FileRefLoose(new File(f))
+  def u(f: String, p: String) = new FileRefJarred(new File(f), p)
 
   // Compare two analyses with useful labelling when they aren't equal.
   private[this] def compare(left: Analysis, right: Analysis): Prop =

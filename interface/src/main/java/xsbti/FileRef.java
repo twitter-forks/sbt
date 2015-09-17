@@ -5,7 +5,7 @@ import java.io.File;
 /**
  * Represents a classfile on disk, which may be either loose in a directory, or inside a jar.
  */
-public interface ClassRef
+public interface FileRef
 {
   /**
    * @return The File containing this class, which will be either a .jar file or

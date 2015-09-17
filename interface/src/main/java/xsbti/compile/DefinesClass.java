@@ -1,6 +1,6 @@
 package xsbti.compile;
 
-import xsbti.ClassRef;
+import xsbti.FileRef;
 import xsbti.Maybe;
 
 /**
@@ -11,5 +11,5 @@ public interface DefinesClass
  	/**
 	* Returns a classpath entry for the requested class.
 	*/
-	Maybe<ClassRef> apply(String className);
+	Maybe<FileRef> apply(String className);
 }

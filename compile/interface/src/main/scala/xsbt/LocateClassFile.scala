@@ -3,7 +3,7 @@
  */
 package xsbt
 
-import xsbti.{ ClassRef, ClassRefJarred, ClassRefLoose }
+import xsbti.{ FileRef, FileRefJarred, FileRefLoose }
 
 import scala.tools.nsc.symtab.Flags
 import scala.tools.nsc.io.{ AbstractFile, PlainFile, ZipArchive }
@@ -50,7 +50,7 @@ abstract class LocateClassFile extends Compat {
    */
   protected class Locator {
     private[this] final val classSeparator = '.'
-    def classFile(sym: Symbol): Option[(ClassRef, String, Boolean)] =
+    def classFile(sym: Symbol): Option[(FileRef, String, Boolean)] =
       // package can never have a corresponding class file; this test does not
       // catch package objects (that do not have this flag set)
       if (sym hasFlag scala.tools.nsc.symtab.Flags.PACKAGE) None else {
@@ -68,37 +68,37 @@ abstract class LocateClassFile extends Compat {
         }
       }
 
-    def findOnClassPath(name: String): Option[ClassRef] =
+    def findOnClassPath(name: String): Option[FileRef] =
       // TODO: worth indexing the compiler's classpath to minimize object creation?
       classPath.findClass(name).flatMap(_.binary.asInstanceOf[Option[AbstractFile]]).flatMap {
         case ze: ZipArchive#Entry =>
           for (zip <- ze.underlyingSource; zipFile <- Option(zip.file)) yield {
-            new ClassRefJarred(zipFile, ze.path)
+            new FileRefJarred(zipFile, ze.path)
           }
         case pf: PlainFile =>
-          Some(new ClassRefLoose(pf.file))
+          Some(new FileRefLoose(pf.file))
         case _ =>
           None
       }
 
-    def getOutputClass(sym: Symbol, separatorRequired: Boolean): Option[ClassRef] =
+    def getOutputClass(sym: Symbol, separatorRequired: Boolean): Option[FileRef] =
       getOutputClassForFilename(classFileName(sym, separatorRequired))
 
-    def findClass(name: String): Option[(ClassRef, Boolean)] =
+    def findClass(name: String): Option[(FileRef, Boolean)] =
       getOutputClass(name).map(f => (f, true)) orElse findOnClassPath(name).map(f => (f, false))
 
-    def getOutputClass(name: String): Option[ClassRef] =
+    def getOutputClass(name: String): Option[FileRef] =
       getOutputClassForFilename(classFileName(name))
 
-    def getOutputClassForFilename(filename: String): Option[ClassRef] =
+    def getOutputClassForFilename(filename: String): Option[FileRef] =
       outputJarContents.collectFirst {
         // scan jars first since they're indexed
         case (jarFile, classFiles) if classFiles(filename) =>
-          new ClassRefJarred(jarFile, filename)
+          new FileRefJarred(jarFile, filename)
       }.orElse {
         // scan directories
         outputDirectories.iterator.map(new File(_, filename)).find(_.exists()).map { file =>
-          new ClassRefLoose(file)
+          new FileRefLoose(file)
         }
       }
 

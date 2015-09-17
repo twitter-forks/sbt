@@ -7,7 +7,7 @@ import java.lang.annotation.Annotation
 import annotation.tailrec
 import sbt.classfile.ClassFile
 import xsbti.api
-import xsbti.{ ClassRefLoose, ClassRefJarred, SafeLazy }
+import xsbti.{ FileRefLoose, FileRefJarred, SafeLazy }
 import SafeLazy.strict
 import collection.mutable
 
@@ -96,9 +96,9 @@ object ClassToAPI {
     val classRef =
       IO.classLocationFile(c) match {
         case jar if jar.getName.endsWith(".jar") =>
-          new ClassRefJarred(jar, name)
+          new FileRefJarred(jar, name)
         case dir =>
-          new ClassRefLoose(new File(dir, name))
+          new FileRefLoose(new File(dir, name))
       }
     classfile.Parser.apply(classRef)
   }

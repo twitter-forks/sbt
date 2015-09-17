@@ -6,7 +6,7 @@ import sbt.inc.Locate._
 import sbt._
 import sbt.inc._
 import xsbti.Logger
-import xsbti.ClassRef
+import xsbti.FileRef
 import xsbti.api.Source
 import xsbti.compile.ClasspathOptions
 import xsbti.compile.CompileOrder._

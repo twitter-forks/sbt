@@ -5,7 +5,7 @@ import collection.JavaConverters._
 
 import sbt.{ IO, PathFinder, Using }
 import xsbti.compile.SingleOutput
-import xsbti.{ ClassRef, ClassRefLoose, ClassRefJarred }
+import xsbti.{ FileRef, FileRefLoose, FileRefJarred }
 
 sealed trait OutputChunk {
   /** The source files owned by the chunk */
@@ -18,11 +18,11 @@ sealed trait OutputChunk {
    * Executes the given function in the context of a compilation, and returns the classfiles
    * that were created.
    */
-  def capture(f: SingleOutput => Unit): Set[ClassRef]
+  def capture(f: SingleOutput => Unit): Set[FileRef]
   /**
    * The current refs at this output location.
    */
-  def getCurrentRefs(): Seq[ClassRef]
+  def getCurrentRefs(): Seq[FileRef]
 }
 
 object OutputChunk {
@@ -37,7 +37,7 @@ object OutputChunk {
   private def list(directory: File): Seq[File] = (PathFinder(directory) ***).filter(_.isFile).get
 
   case class Directory private[OutputChunk] (output: SingleOutput, sources: Seq[File]) extends OutputChunk {
-    def getCurrentRefs(): Seq[ClassRef] = list(outputFile).map(new ClassRefLoose(_))
+    def getCurrentRefs(): Seq[FileRef] = list(outputFile).map(new FileRefLoose(_))
 
     def capture(f: SingleOutput => Unit) = {
       val pre = getCurrentRefs()
@@ -46,12 +46,12 @@ object OutputChunk {
     }
   }
   case class Jar private[OutputChunk] (output: SingleOutput, sources: Seq[File]) extends OutputChunk {
-    def getCurrentRefs(): Seq[ClassRef] =
+    def getCurrentRefs(): Seq[FileRef] =
       if (outputFile.exists) {
         Using.jarFile(false)(outputFile) { jf =>
           // force the collection while the jar is open
           jf.entries.asScala.map(_.getName).toVector
-        }.map(new ClassRefJarred(outputFile, _))
+        }.map(new FileRefJarred(outputFile, _))
       } else {
         Seq()
       }
@@ -96,8 +96,8 @@ object OutputChunk {
         // move the temporary jar to its final location
         IO.move(tempJar, outputFile)
 
-        // and return ClassRefs for newly added classes
-        (newEntryNames.map(new ClassRefJarred(outputFile, _)): Set[ClassRef]) -- pre
+        // and return FileRefs for newly added classes
+        (newEntryNames.map(new FileRefJarred(outputFile, _)): Set[FileRef]) -- pre
       }
   }
 }

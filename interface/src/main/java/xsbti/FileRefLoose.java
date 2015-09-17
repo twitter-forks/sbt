@@ -2,11 +2,11 @@ package xsbti;
 
 import java.io.File;
 
-public final class ClassRefLoose implements ClassRef
+public final class FileRefLoose implements FileRef
 {
   public final File classFile;
 
-  public ClassRefLoose(File classFile) {
+  public FileRefLoose(File classFile) {
     this.classFile = classFile;
   }
 
@@ -17,13 +17,13 @@ public final class ClassRefLoose implements ClassRef
   /** NB: Used in serialization of this class. */
   @Override
   public String toString() {
-    return ClassRefs.LOOSE + "(" + classFile + ")";
+    return FileRefs.LOOSE + "(" + classFile + ")";
   }
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof ClassRefLoose)) return false;
-    ClassRefLoose that = (ClassRefLoose) o;
+    if (!(o instanceof FileRefLoose)) return false;
+    FileRefLoose that = (FileRefLoose) o;
     if (!that.classFile.equals(this.classFile)) return false;
     return true;
   }

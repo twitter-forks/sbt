@@ -2,12 +2,12 @@ package xsbti;
 
 import java.io.File;
 
-public final class ClassRefJarred implements ClassRef
+public final class FileRefJarred implements FileRef
 {
   public final File jarFile;
   public final String classFile;
 
-  public ClassRefJarred(File jarFile, String classFile) {
+  public FileRefJarred(File jarFile, String classFile) {
     this.jarFile = jarFile;
     this.classFile = classFile;
   }
@@ -19,13 +19,13 @@ public final class ClassRefJarred implements ClassRef
   /** NB: Used in serialization of this class. */
   @Override
   public String toString() {
-    return ClassRefs.JARRED + "(" + jarFile + "!" + classFile + ")";
+    return FileRefs.JARRED + "(" + jarFile + "!" + classFile + ")";
   }
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof ClassRefJarred)) return false;
-    ClassRefJarred that = (ClassRefJarred) o;
+    if (!(o instanceof FileRefJarred)) return false;
+    FileRefJarred that = (FileRefJarred) o;
     if (!that.jarFile.equals(this.jarFile)) return false;
     if (!that.classFile.equals(this.classFile)) return false;
     return true;

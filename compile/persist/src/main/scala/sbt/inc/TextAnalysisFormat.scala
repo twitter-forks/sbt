@@ -3,7 +3,7 @@ package inc
 
 import java.io._
 import sbt.{ CompileSetup, Relation }
-import xsbti.{ ClassRef, ClassRefs }
+import xsbti.{ FileRef, FileRefs }
 import xsbti.api.{ Compilation, Source }
 import xsbti.compile.{ MultipleOutput, SingleOutput }
 import javax.xml.bind.DatatypeConverter
@@ -196,7 +196,7 @@ object TextAnalysisFormat {
 
     def read(in: BufferedReader): Stamps = {
       def s2f(s: String) = new File(s)
-      def s2cr(s: String) = ClassRefs.fromString(s)
+      def s2cr(s: String) = FileRefs.fromString(s)
       val products = readMap(in)(Headers.products, s2cr, Stamp.fromString)
       val sources = readMap(in)(Headers.sources, s2f, Stamp.fromString)
       val binaries = readMap(in)(Headers.binaries, s2cr, Stamp.fromString)
