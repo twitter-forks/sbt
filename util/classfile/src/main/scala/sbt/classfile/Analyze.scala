@@ -16,7 +16,7 @@ import xsbti.{ FileRef, FileRefJarred, FileRefLoose, DependencyContext }
 import xsbti.DependencyContext._
 
 private[sbt] object Analyze {
-  def apply[T](newClasses: Seq[FileRef], sources: Seq[File], log: Logger)(analysis: xsbti.AnalysisCallback, loader: ClassLoader, readAPI: (File, Seq[Class[_]]) => Set[String]) {
+  def apply[T](newFiles: Seq[FileRef], sources: Seq[File], log: Logger)(analysis: xsbti.AnalysisCallback, loader: ClassLoader, readAPI: (File, Seq[Class[_]]) => Set[String]) {
     val sourceMap = sources.toSet[File].groupBy(_.getName)
 
     def load(tpe: String, errMsg: => Option[String]): Option[Class[_]] =
@@ -29,7 +29,8 @@ private[sbt] object Analyze {
     // parse class files and assign classes to sources.  This must be done before dependencies, since the information comes
     // as class->class dependencies that must be mapped back to source->class dependencies using the source+class assignment
     for (
-      newClass <- newClasses;
+      // NB: would be good to capture generated non-classes (ie, resources) here
+      newClass <- newFiles if newClass.isClass;
       classFile = Parser(newClass);
       sourceFile <- classFile.sourceFile orElse guessSourceName(newClass);
       source <- guessSourcePath(sourceMap, classFile, log)

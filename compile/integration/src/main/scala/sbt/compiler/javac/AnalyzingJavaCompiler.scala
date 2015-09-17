@@ -79,8 +79,7 @@ final class AnalyzingJavaCompiler private[sbt] (
         }
 
         // Analyze each chunk by comparing old and new classes
-        val newClasses = newFiles.iterator.filter(_.isClass).toSeq
-        Analyze(newClasses, chunk.sources, log)(callback, loader, readAPI)
+        Analyze(newFiles.toSeq, chunk.sources, log)(callback, loader, readAPI)
       }
       // TODO - Perhaps we just record task 4 here
     }
