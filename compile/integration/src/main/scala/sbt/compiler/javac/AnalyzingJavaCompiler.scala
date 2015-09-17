@@ -57,7 +57,7 @@ final class AnalyzingJavaCompiler private[sbt] (
 
       // Execute the compilation
       // TODO - Perhaps we just record task 1 here
-      val newClasses =
+      val newFiles =
         chunk.capture { tmpOutput =>
           try javac.compileWithReporter(sources.toArray, absClasspath.toArray, tmpOutput, options.toArray, reporter, log)
           catch {
@@ -79,7 +79,8 @@ final class AnalyzingJavaCompiler private[sbt] (
         }
 
         // Analyze each chunk by comparing old and new classes
-        Analyze(newClasses.toSeq, chunk.sources, log)(callback, loader, readAPI)
+        val newClasses = newFiles.iterator.filter(_.isClass).toSeq
+        Analyze(newClasses, chunk.sources, log)(callback, loader, readAPI)
       }
       // TODO - Perhaps we just record task 4 here
     }

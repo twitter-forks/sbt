@@ -28,6 +28,10 @@ class OutputChunkSpecification extends Specification {
         // create another class and confirm that both are in the output
         val refB = new FileRefJarred(outputFile, "b.class")
         captureAdd(c, refB.classFile) === Set(refA, refB)
+
+        // create a resource
+        val refC = new FileRefJarred(outputFile, "c.txt")
+        captureAdd(c, refC.classFile) === Set(refA, refB, refC)
       }
     }
 

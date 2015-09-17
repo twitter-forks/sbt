@@ -16,6 +16,10 @@ public final class FileRefJarred implements FileRef
     return jarFile;
   }
 
+  public boolean isClass() {
+    return classFile.endsWith(".class");
+  }
+
   /** NB: Used in serialization of this class. */
   @Override
   public String toString() {

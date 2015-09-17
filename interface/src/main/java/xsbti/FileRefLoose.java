@@ -14,6 +14,10 @@ public final class FileRefLoose implements FileRef
     return classFile;
   }
 
+  public boolean isClass() {
+    return classFile.getName().endsWith(".class");
+  }
+
   /** NB: Used in serialization of this class. */
   @Override
   public String toString() {
