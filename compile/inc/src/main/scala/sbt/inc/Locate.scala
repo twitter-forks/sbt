@@ -19,11 +19,12 @@ object Locate {
     val entries =
       classpath.map { file =>
         (file, f(file))
-      }.toStream
-    def fn(className: String): Option[FileRef] =
-      entries.flatMap {
+      }.toVector
+    def fn(className: String): Option[FileRef] = {
+      entries.toStream.flatMap {
         case (file, defines) => defines(className)
       }.headOption
+    }
     fn
   }
 
