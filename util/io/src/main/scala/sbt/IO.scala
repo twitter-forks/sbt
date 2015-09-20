@@ -49,10 +49,10 @@ object IO {
     if (codeSource ne null) {
       codeSource.getLocation
     } else {
-      Option(ClassLoader.getSystemClassLoader.getResource(classfilePathForClassname(cl.getName)))
+      // NB: This assumes that classes without code sources are System classes, and thus located in
+      // jars. It assumes that `urlAsFile` will truncate to the containing jar file.
+      Option(cl.getResource(cl.getSimpleName + ".class"))
         .flatMap {
-          // TODO: assuming that System-class-loaded classes are located in jars, which
-          // will cause this method to truncate to the jar
           urlAsFile
         }.getOrElse {
           sys.error("No class location for " + cl)
@@ -99,13 +99,6 @@ object IO {
         Some(uriToFile(if (end == -1) path else path.substring(0, end)))
       case _ => None
     }
-
-  /**
-   * @return The path for the given classname.
-   *
-   * TODO: crossplatform
-   */
-  def classfilePathForClassname(clsname: String): String = s"${clsname.replace('.', '/')}.class"
 
   /**
    * @return Either a string path for a loose classfile, or a pair of a jar path and
