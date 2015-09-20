@@ -100,23 +100,6 @@ object IO {
       case _ => None
     }
 
-  /**
-   * @return Either a string path for a loose classfile, or a pair of a jar path and
-   * a classfile path located within the jar.
-   */
-  def classfilePathFromURL(url: URL): Either[String, (String, String)] =
-    url.getProtocol match {
-      case FileScheme =>
-        assert(url.getPath.endsWith(".class"), s"URL $url does not represent a classfile.")
-        Left(url.getPath)
-      case JarScheme =>
-        val path = url.getPath
-        val end = path.indexOf("!")
-        Right(path.substring(0, end) -> path.substring(end + 1))
-      case prot =>
-        throw new AssertionError(s"Protocol $prot not supported.")
-    }
-
   private[this] def uriToFile(uriString: String): File =
     {
       val uri = new URI(uriString)
